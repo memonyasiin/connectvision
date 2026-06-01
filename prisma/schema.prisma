@@ -1,0 +1,547 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// ConnectVision — multi-tenant Site Configuration data model
+// ─────────────────────────────────────────────────────────────────────────────
+// Three entities, all reachable from a `Merchant` root:
+//
+//   Merchant  ──┬─►  TenantDomain  ──►  SiteConfiguration
+//               │                       (one-to-one with TenantDomain)
+//               └─►  SiteConfiguration
+//
+// The Merchant carries the cross-platform tracking hooks for Pataa CRM /
+// Workops, so every tenant write here can be mirrored into the operator's
+// Pataa workspace via PATAA_CRM_SYNC_TOKEN.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Merchant ─────────────────────────────────────────────────────────────────
+model Merchant {
+  id    String @id @default(cuid())
+  email String @unique
+  name  String
+
+  // ── Sovereign onboarding identity (MODULE 1 additive) ────────────────────
+  // 15-char Indian Goods & Services Tax Identification Number.
+  // Format: 2-digit state + 10-char PAN + 1 entity + 1 alphabet + 1 checksum.
+  // Unique platform-wide — a single GSTIN cannot register twice.
+  gstinString String? @unique @db.VarChar(15)
+
+  // Google Maps / local business listing URL — scraped at onboarding to seed
+  // services catalog + opening hours + first review snapshot.
+  mapsUrl String? @db.VarChar(500)
+
+  // Virtual Payment Address (UPI VPA) for direct-to-bank NPCI micro-txns.
+  // Format: localpart@bankhandle, e.g. "merchant@hdfcbank", "biz@okicici".
+  // Settlement target for every CV_Ledger entry.
+  vpaAddress String? @unique @db.VarChar(120)
+
+  // Auto-tracked compliance score 0.00–100.00. Computed by background job
+  // from GSTIN verification (40), tax-filing freshness (20), complaint
+  // ratio (20), payment-dispute ratio (20). Drives the "verified merchant"
+  // badge and search ranking in the marketplace catalogue.
+  complianceRating Decimal @default(0) @db.Decimal(5, 2)
+
+  // Cross-platform sync — wired into the Pataa ecosystem.
+  pataaCustomerId String? @unique
+  pataaWorkopsId  String? @unique
+
+  // Billing — Razorpay customer id used for recurring subscriptions.
+  razorpayCustomerId String? @unique
+
+  domains       TenantDomain[]
+  sites         SiteConfiguration[]
+  employees     Employee[]
+  ledgerEntries CV_Ledger[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([complianceRating])
+  @@map("merchants")
+}
+
+// ── TenantDomain ─────────────────────────────────────────────────────────────
+// Owns both the system-issued *.connectvision.io subdomain AND optional
+// verified custom apex. Verification status drives whether middleware will
+// resolve traffic for the custom domain.
+model TenantDomain {
+  id         String   @id @default(cuid())
+  merchantId String
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  // *.connectvision.io subdomain, e.g. "memon-beauty"
+  subdomain String @unique
+
+  // Optional bring-your-own apex, e.g. "memonbeauty.com"
+  customDomain     String?   @unique
+  customDomainVerified Boolean @default(false)
+  customDomainVerifiedAt DateTime?
+
+  // Cloudflare DNS record id — populated when middleware-side apex check
+  // proves out (TXT challenge or CNAME flatten). Lets us revoke quickly.
+  cfDnsRecordId String?
+
+  siteConfig    SiteConfiguration?
+  appointments  BusinessAppointment[]
+  ledgerEntries CV_Ledger[]
+  customers     CV_CustomerLedger[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([merchantId])
+  @@map("tenant_domains")
+}
+
+// ── SiteConfiguration ────────────────────────────────────────────────────────
+// The persisted "5-tiered UI state" for one tenant site. Mirrors the
+// BusinessData shape from src/contexts/BuildContext.tsx so the round-trip
+// from editor → DB → server-rendered tenant page is identity.
+model SiteConfiguration {
+  id String @id @default(cuid())
+
+  merchantId String
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  domainId String       @unique
+  domain   TenantDomain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  // ── Tier 1 — branding identity ───────────────────────────────────────────
+  businessName String
+  tagline      String @default("")
+  description  String @db.Text
+
+  // Hex primary color, e.g. "#1c4d2a". Drives --primary-color CSS variable.
+  primaryColor String @default("#1c4d2a")
+
+  // Optional brand logo URL (CDN-hosted).
+  logoUrl String?
+
+  // ── Tier 2 — template layout selection ───────────────────────────────────
+  // Industry vertical drives which section variant catalog is offered.
+  selectedCategory String @default("skincare")
+
+  // Active variant ID for each section kind. Stored as a single JSON so we
+  // can add section kinds without a migration. Shape:
+  //   { hero: "split", services: "grid", contact: "split-map", footer: "minimal" }
+  sectionVariants Json @default("{}")
+
+  // ── Tier 5 — WhatsApp / funnel hooks ─────────────────────────────────────
+  whatsappTarget String?
+
+  // Free-form metadata bucket for future Tier-1/2/4 expansion. Avoids
+  // schema migration for experimental fields. Examples:
+  //   { typography: {...}, gallery: [...] }
+  extra Json?
+
+  // ── Publish state ────────────────────────────────────────────────────────
+  published   Boolean   @default(false)
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([merchantId])
+  @@map("site_configurations")
+}
+
+// ── BusinessAppointment ──────────────────────────────────────────────────────
+// One row per slot. AVAILABLE rows are pre-seeded by the operator's
+// schedule template; they transition to PENDING_CHECKOUT the moment a
+// visitor selects them, and to CONFIRMED when the UPI transaction settles.
+//
+// Locale persists so reminder dispatches months later still render in the
+// language the customer originally booked in.
+enum AppointmentStatus {
+  AVAILABLE
+  PENDING_CHECKOUT
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model BusinessAppointment {
+  id String @id @default(cuid())
+
+  domainId String
+  domain   TenantDomain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  // ── Slot ─────────────────────────────────────────────────────────────────
+  startsAt    DateTime
+  endsAt      DateTime
+  durationMin Int
+
+  // ── Service ──────────────────────────────────────────────────────────────
+  serviceName     String
+  serviceCategory String?
+
+  // ── Status / lifecycle ───────────────────────────────────────────────────
+  status AppointmentStatus @default(AVAILABLE)
+
+  // ── Customer (populated once status >= PENDING_CHECKOUT) ─────────────────
+  customerName  String?
+  customerPhone String?
+  customerEmail String?
+
+  // BCP-47 locale, e.g. "en-IN", "hi-IN", "hi-IN-Latn" (Hinglish).
+  customerLocale String?
+
+  // ── Surge pricing (MODULE 3 additive) ────────────────────────────────────
+  // Operator-set base price for the service. Never changes once written.
+  baselinePriceInr Decimal? @db.Decimal(10, 2)
+  // Demand-driven multiplier (1.00 = baseline, 2.00 = festival surge etc.).
+  // Recomputed at HOLD time by the surge engine — never set by the merchant.
+  surgeMultiplier  Decimal? @db.Decimal(4, 2)
+  // Snapshot of (baselinePriceInr × surgeMultiplier) frozen at HOLD time so
+  // the customer is never retroactively re-billed if surge changes mid-checkout.
+  activePriceInr   Decimal? @db.Decimal(10, 2)
+  // upi:// intent URI generated at HOLD time. Tapping this on a mobile
+  // browser opens the customer's installed UPI app pre-filled with the
+  // tenant's VPA + the locked activePriceInr.
+  upiPrepaidLink   String?  @db.VarChar(500)
+
+  // ── UPI / payment (NPCI-standard) ────────────────────────────────────────
+  upiVpa        String?
+  upiRefId      String?  @unique
+  upiAmountInr  Decimal? @db.Decimal(10, 2)
+  upiCapturedAt DateTime?
+
+  // ── Pataa CRM linkage ────────────────────────────────────────────────────
+  pataaCustomerId String?
+
+  // ── Notification audit ───────────────────────────────────────────────────
+  confirmationSentAt DateTime?
+  reminder30MinSentAt DateTime?
+  reminder1HrSentAt   DateTime?
+
+  notes String? @db.Text
+
+  ledger CV_Ledger?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([domainId, startsAt])
+  @@index([status])
+  @@map("business_appointments")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WORKFORCE — Phase 4
+// ─────────────────────────────────────────────────────────────────────────────
+// Anti-fraud productivity verification matrix. Three ledgers per employee:
+//
+//   CV_AttendanceLedger  → approved leaves + auto-flag of OVERDUE_ABSENT
+//   CV_WorkforceLedger   → terminal-focus + window-transition telemetry
+//   CV_Ledger            → UPI khata (txn audit, decoupled from
+//                          appointments so revenue retains an
+//                          immutable log even if rows are reassigned)
+//
+// Every model is merchant-scoped (multi-tenant isolation) and carries an
+// optional `pataa*Id` hook so Pataa CRM can mirror the row for cross-
+// platform reporting.
+
+model Employee {
+  id String @id @default(cuid())
+
+  merchantId String
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  name  String
+  email String?
+  phone String?
+  role  String?   // free-form: "barber", "doctor", "stylist", "manager"
+
+  // Monthly fixed salary in INR. Used to compute per-day OVERDUE_ABSENT penalty.
+  monthlySalaryInr Decimal? @db.Decimal(10, 2)
+
+  // Pataa Workops cross-link.
+  pataaEmployeeId String?
+
+  // Allowed-app list (JSON array of bundle ids) — drives `isProductive`
+  // classification on the workforce ledger.
+  productiveAppIds Json @default("[]")
+
+  active    Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attendance     CV_AttendanceLedger[]
+  workforceLogs  CV_WorkforceLedger[]
+
+  @@index([merchantId])
+  @@map("employees")
+}
+
+enum LeaveStatus {
+  PENDING_APPROVAL
+  APPROVED
+  ON_LEAVE
+  RETURNED
+  // Auto-flagged when the employee fails to return by `leaveEnd` and no
+  // secondary authorization token has been stamped to extend the leave.
+  OVERDUE_ABSENT
+  EXTENDED_BY_AUTH
+  REJECTED
+  CANCELLED
+}
+
+model CV_AttendanceLedger {
+  id String @id @default(cuid())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  // Leave window.
+  leaveStart DateTime
+  leaveEnd   DateTime
+  leaveType  String   // "casual" | "sick" | "festival" | "earned" | "unpaid"
+
+  status LeaveStatus @default(PENDING_APPROVAL)
+
+  // Primary approval — manager / owner.
+  approvedById String?
+  approvedAt   DateTime?
+
+  // Secondary authorization required to extend beyond `leaveEnd`. Operator
+  // sets this via signed OTP from their phone or a manager's auth token —
+  // its mere existence flips OVERDUE_ABSENT back to EXTENDED_BY_AUTH.
+  secondaryAuthToken String?
+  secondaryAuthBy    String?
+  secondaryAuthAt    DateTime?
+  secondaryAuthExtendsTo DateTime?
+
+  // Actual return — when null AND leaveEnd < now() AND no secondary auth,
+  // background router auto-flags OVERDUE_ABSENT.
+  actualReturnedAt DateTime?
+
+  // Audit columns for the auto-flagger.
+  flaggedAt     DateTime?
+  flaggedReason String?
+
+  // Penalty audit — populated when payroll deduction is calculated.
+  penaltyDaysApplied Int      @default(0)
+  penaltyAmountInr   Decimal? @db.Decimal(10, 2)
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([leaveEnd])
+  @@map("cv_attendance_ledger")
+}
+
+model CV_WorkforceLedger {
+  id String @id @default(cuid())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  recordedAt DateTime @default(now())
+
+  // Active terminal focus.
+  terminalAppId String   // e.g. "chrome", "vscode", "instagram"
+  windowTitle   String?
+  focusDurationMs Int
+
+  // Derived from Employee.productiveAppIds.
+  isProductive Boolean @default(true)
+
+  // Drives ghost-state detection — if 0 across the last N minutes during
+  // an active shift, the operator gets a leave_boundary_breach alert.
+  inputEventCount Int @default(0)
+
+  @@index([employeeId, recordedAt])
+  @@index([isProductive])
+  @@map("cv_workforce_ledger")
+}
+
+model CV_Ledger {
+  id String @id @default(cuid())
+
+  merchantId String
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  domainId String?
+  domain   TenantDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
+
+  // Optional linkage — payment for a specific appointment.
+  appointmentId String? @unique
+  appointment   BusinessAppointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  // UPI rails — store SHA-256 of NPCI reference (privacy) + raw ref length.
+  upiRefHash String  @unique
+  upiAmountInr Decimal @db.Decimal(12, 2)
+  currency     String  @default("INR")
+
+  payerVpa  String?
+  payerName String?
+
+  capturedAt DateTime @default(now())
+
+  // Free-form bucket for additional context the rail surfaces.
+  metadata Json?
+
+  @@index([merchantId, capturedAt])
+  @@index([domainId])
+  @@map("cv_ledger")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKETPLACE CUSTOMIZATION — MODULE 7
+// ─────────────────────────────────────────────────────────────────────────────
+// One row per personalisation draft submitted from /customize/[slug].
+// Lifecycle:  DRAFT → LOCKED (on checkout) → PURCHASED (after capture)
+//
+// Multi-tenant note: drafts are CROSS-TENANT (they're marketplace
+// purchases by end-customers, not tenant-scoped operations). Tied
+// loosely to customerEmail until proper auth ships.
+
+model CustomizationDraft {
+  id String @id @default(cuid())
+
+  // Marketplace theme being customised — matches MARKETPLACE_THEMES.slug
+  themeSlug String @db.VarChar(80)
+
+  // ── Tier 1 — identity ─────────────────────────────────────────────────
+  businessName String @db.VarChar(120)
+  tagline      String? @db.VarChar(200)
+  aboutText    String? @db.Text
+
+  // ── Tier 2 — brand visuals ────────────────────────────────────────────
+  primaryColor String  @db.VarChar(9)   // hex, e.g. "#1c4d2a" or "#1c4d2aff"
+  logoUrl      String? @db.VarChar(500)
+
+  // ── Tier 3 — services (JSON array of {name, description, priceInr?}) ─
+  services Json @default("[]")
+
+  // ── Tier 4 — contact ──────────────────────────────────────────────────
+  contactPhone   String? @db.VarChar(20)
+  contactEmail   String? @db.VarChar(120)
+  contactAddress String? @db.VarChar(500)
+
+  // Loose binding to a customer identity (proper auth comes later).
+  customerEmail String? @db.VarChar(120)
+
+  // Lifecycle: DRAFT → LOCKED (Razorpay order created) → PURCHASED (capture verified)
+  status String @default("DRAFT") @db.VarChar(20)
+
+  // ── MODULE 8 — Checkout & licensing (additive) ─────────────────────────
+  // Razorpay order id from POST https://api.razorpay.com/v1/orders.
+  // Stamped on the row when /api/checkout/order succeeds — used to make
+  // re-clicks of the checkout button idempotent (reuses the same order).
+  razorpayOrderId String? @unique @db.VarChar(64)
+
+  // Razorpay payment id stamped on /api/checkout/verify success.
+  razorpayPaymentId String? @unique @db.VarChar(64)
+
+  // Issued license key in the format CV-XXXXX-XXXXX-XXXXX. The mere
+  // presence of a non-null licenseKey + status = PURCHASED is the
+  // canonical "buyer has paid" signal across the rest of the platform.
+  licenseKey String? @unique @db.VarChar(40)
+
+  // Timestamps for the two lifecycle transitions.
+  lockedAt    DateTime?
+  purchasedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([themeSlug])
+  @@index([customerEmail])
+  @@index([status])
+  @@map("customization_drafts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOMER RETENTION LEDGER — Phase 5
+// ─────────────────────────────────────────────────────────────────────────────
+// One row per (tenant, customer-phone) pair. Captures visit frequency and
+// cumulative spend so the background scanner at /api/admin/customers can
+// classify each customer as ACTIVE / CHURN_RISK / OVERDUE_RECALL and emit
+// a localized re-engagement WhatsApp broadcast payload pre-formatted for
+// PataaWaa dispatch.
+//
+// Thresholds (recomputed on every scan):
+//   ACTIVE         — visited within the last 30 days
+//   CHURN_RISK     — last visit 31–90 days ago
+//   OVERDUE_RECALL — last visit 91+ days ago
+//
+// Multi-tenant isolation:
+//   @@unique([tenantId, customerPhone]) — a phone number can appear in
+//   multiple tenants (a salon and a clinic might share a customer) but
+//   only once per tenant. The scanner queries scoped to tenantId so one
+//   tenant's classifier cannot accidentally read another tenant's rows.
+//
+// Indices target the two hot query paths:
+//   (tenantId, communicationStatus) — admin "show me everyone at CHURN_RISK"
+//   (tenantId, lastVisitDate)       — background scan ordering oldest-first
+
+enum CommunicationStatus {
+  ACTIVE
+  CHURN_RISK
+  OVERDUE_RECALL
+}
+
+model CV_CustomerLedger {
+  // Stable primary key. Named `customerId` per spec — also functions as
+  // the @id so external systems (Pataa CRM, PataaWaa) can reference rows
+  // without an additional cuid lookup.
+  customerId String @id @default(cuid())
+
+  // Multi-tenant scope. Bound to TenantDomain (not Merchant) so a single
+  // Merchant operating multiple sub-brands keeps its customer lists cleanly
+  // partitioned per domain — matches the existing CV_Ledger / appointment
+  // scoping model.
+  tenantId String
+  tenant   TenantDomain @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Identity. customerPhone is the natural key per tenant (see @@unique).
+  customerName  String
+  customerPhone String
+  customerEmail String?
+
+  // BCP-47 locale for broadcast generation. Defaults handled by
+  // resolveLocale() in src/lib/translations.ts — mass-market 'hi-IN-Latn'.
+  customerLocale String?
+
+  // Engagement signals.
+  lastVisitDate DateTime
+  visitCount    Int      @default(1)
+
+  // Lifetime value in INR. Decimal(12, 2) supports up to 9,999,999,999.99
+  // which is well beyond any realistic single-customer LTV.
+  totalSpendInr Decimal @db.Decimal(12, 2) @default(0)
+
+  // Current engagement classification — recomputed by /api/admin/customers
+  // on every scan invocation. Defaults ACTIVE on first insert.
+  communicationStatus CommunicationStatus @default(ACTIVE)
+
+  // Scanner / broadcast audit columns.
+  lastEvaluatedAt DateTime?
+  lastBroadcastAt DateTime?
+
+  // Pataa CRM cross-link — same pattern as BusinessAppointment.
+  pataaCustomerId String?
+
+  // Free-form bucket (preferred services, tags, internal notes).
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, customerPhone])
+  @@index([tenantId, communicationStatus])
+  @@index([tenantId, lastVisitDate])
+  @@map("cv_customer_ledger")
+}

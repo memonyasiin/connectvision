@@ -7,9 +7,12 @@
 //   - scroll-depth per section (via IntersectionObserver)
 //   - active section dwell time (entered → exited stopwatch)
 //   - click intents (sections with `data-track-intent` on inner elements)
+//   - cumulative click depth across the session
+//   - last clicked `data-product-tag` for catalog-aware AI replies
+//   - total session duration (computed at snapshot read time)
 //
 // State lives in a module-scoped store so every section's tracker writes to
-// the same singleton. The Tier 5 WhatsApp widget reads the snapshot at click
+// the same singleton. The Tier-5 WhatsApp widget reads the snapshot at click
 // time and embeds it into the wa.me deep-link payload, giving the LLM agent
 // rich context before it greets the visitor.
 
@@ -24,13 +27,24 @@ interface SectionStat {
   intents: string[];
 }
 
-interface ActivitySnapshot {
+export interface ActivitySnapshot {
+  /** Wall-clock ms when the tracker was first instantiated. */
   startedAt: number;
+  /** Max scroll depth percentage observed (across all sections). */
   scrollDepthPct: number;
+  /** Section ids currently in viewport (most recent first). */
   activeSections: string[];
+  /** Per-section dwell / depth / intent telemetry. */
   sectionStats: Record<string, SectionStat>;
+  /** Flat list of `"sectionId:intent"` strings for quick scanning. */
   intents: string[];
+  /** Cumulative tracked clicks (any data-track-intent element). */
+  clickDepth: number;
+  /** Last seen `data-product-tag` value — for catalog-aware AI replies. */
+  lastProductTag: string | null;
+  /** Document.referrer captured once on init. */
   referrer: string;
+  /** Page URL captured once on init. */
   pageUrl: string;
 }
 
@@ -41,6 +55,8 @@ class ActivityStore {
     activeSections: [],
     sectionStats: {},
     intents: [],
+    clickDepth: 0,
+    lastProductTag: null,
     referrer: typeof document !== 'undefined' ? document.referrer : '',
     pageUrl: typeof window !== 'undefined' ? window.location.href : '',
   };
@@ -73,10 +89,12 @@ class ActivityStore {
     if (pct > this.snapshot.scrollDepthPct) this.snapshot.scrollDepthPct = pct;
   }
 
-  noteIntent(sectionId: string, intent: string) {
+  noteIntent(sectionId: string, intent: string, productTag: string | null) {
     const stat = this.snapshot.sectionStats[sectionId];
     if (stat) stat.intents.push(intent);
     this.snapshot.intents.push(`${sectionId}:${intent}`);
+    this.snapshot.clickDepth += 1;
+    if (productTag) this.snapshot.lastProductTag = productTag;
   }
 
   private ensureSection(sectionId: string, sectionKind: string): SectionStat {
@@ -108,6 +126,11 @@ export function getActivitySnapshot(): ActivitySnapshot {
   return getStore().getSnapshot();
 }
 
+/** Convenience: compute milliseconds since the tracker started. */
+export function getSessionDurationMs(): number {
+  return Date.now() - getStore().getSnapshot().startedAt;
+}
+
 export interface UseActivityTrackerOptions {
   sectionId: string;
   sectionKind: string;
@@ -134,14 +157,12 @@ export function useActivityTracker({ sectionId, sectionKind }: UseActivityTracke
         for (const entry of entries) {
           if (entry.isIntersecting) {
             store.noteSectionEnter(sectionId, sectionKind);
-            // Depth ≈ visible ratio scaled to %.
             store.noteSectionScrollDepth(sectionId, Math.round(entry.intersectionRatio * 100));
           } else {
             store.noteSectionExit(sectionId);
           }
         }
       },
-      // 10 thresholds gives smooth 0–100% depth telemetry.
       { threshold: Array.from({ length: 11 }, (_, i) => i / 10) },
     );
     io.observe(el);
@@ -151,7 +172,8 @@ export function useActivityTracker({ sectionId, sectionKind }: UseActivityTracke
       const intentEl = target?.closest('[data-track-intent]') as HTMLElement | null;
       if (!intentEl) return;
       const intent = intentEl.dataset.trackIntent;
-      if (intent) store.noteIntent(sectionId, intent);
+      const productTag = intentEl.dataset.productTag ?? null;
+      if (intent) store.noteIntent(sectionId, intent, productTag);
     };
     el.addEventListener('click', onClick, { capture: true });
 

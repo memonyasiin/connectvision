@@ -39,7 +39,28 @@ import {
 // Tier 1 — Type Definition
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type HeroVariant = 'split' | 'centered';
+/**
+ * Hero layout variants surfaced to the editor's swap UI. `bold` is the
+ * fitness-vertical default (dark canvas, oversized stencil headline).
+ */
+export type HeroVariant = 'split' | 'centered' | 'bold';
+
+/**
+ * Industry verticals the platform supports — same set the legacy
+ * `src/components/themeRegistry` + `src/sections/_registry` are keyed by.
+ * Declared as a `const` tuple so the union type is auto-derived AND the
+ * runtime `INDUSTRY_CATEGORIES` array can iterate them with TS-narrowed
+ * element types.
+ */
+export const INDUSTRY_CATEGORIES = [
+  'skincare',
+  'fitness',
+  'restaurant',
+  'corporate',
+  'medical',
+] as const;
+
+export type IndustryCategory = typeof INDUSTRY_CATEGORIES[number];
 
 /**
  * Runtime state for the visitor-side funnel. Drives the Tier-5 WhatsApp
@@ -47,6 +68,10 @@ export type HeroVariant = 'split' | 'centered';
  * activeSectionId answers "what are they looking at right now?", lastIntent
  * answers "what did they tap?", whatsappTarget is the pre-resolved
  * deep-link destination.
+ *
+ * `sessionDurationMs / clickDepth / lastProductTag` were added in MODULE 1
+ * for the hyper-contextual WA deep-link payload (see waDeepLink.ts) — every
+ * theme's `_common.tsx` patches these on each CTA tap.
  */
 export interface FunnelContext {
   /** Max scroll depth percentage observed this session (0–100). */
@@ -57,17 +82,28 @@ export interface FunnelContext {
   lastIntent: string | null;
   /** Pre-resolved WhatsApp number for the floating CTA (E.164). */
   whatsappTarget: string | null;
+  /** Milliseconds since the session started — derived from useActivityTracker. */
+  sessionDurationMs: number;
+  /** Cumulative CTA click count this session. */
+  clickDepth: number;
+  /** Product/service tag attached to the most-recently-tapped CTA. */
+  lastProductTag: string | null;
 }
 
 /**
  * The full editable state of one tenant's site. Everything an editor can
  * tweak lives here; the rest is derived.
+ *
+ * `selectedCategory` was added in MODULE 1 — drives both the theme
+ * dispatcher (which theme module to mount) and the editor's category-
+ * picker UI (which variants to list).
  */
 export interface BusinessData {
   businessName: string;
   tagline: string;
   description: string;
   primaryColor: `#${string}`;
+  selectedCategory: IndustryCategory;
   heroVariant: HeroVariant;
   funnelContext: FunnelContext;
 }
@@ -84,12 +120,16 @@ export const DEFAULT_CONFIG: BusinessData = {
   description:
     'Premium skincare crafted in small batches. Honest formulations, fast results. Visit us in Mumbai or get on a WhatsApp consult in under five minutes.',
   primaryColor: '#1c4d2a',
+  selectedCategory: 'skincare',
   heroVariant: 'split',
   funnelContext: {
     scrollDepthPct: 0,
     activeSectionId: null,
     lastIntent: null,
     whatsappTarget: '+919702601111',
+    sessionDurationMs: 0,
+    clickDepth: 0,
+    lastProductTag: null,
   },
 };
 

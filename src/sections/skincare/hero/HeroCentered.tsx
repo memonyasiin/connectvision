@@ -1,7 +1,8 @@
 'use client';
 
-// Centered-layout hero variant. Same data source, different composition —
-// proves variant swap is a one-line state mutation, no layout regressions.
+// Centered-layout hero variant — skincare category. Streams the full
+// activity vector into the deep-link payload so the AI agent has session
+// metrics on the very first inbound WhatsApp message.
 
 import { useBuild } from '@/contexts/BuildContext';
 import { useActivityTracker, getActivitySnapshot } from '@/hooks/useActivityTracker';
@@ -20,10 +21,15 @@ export function HeroCentered() {
     if (!phone) return;
 
     const snap = getActivitySnapshot();
+    const sessionDurationMs = Date.now() - snap.startedAt;
+
     updateFunnel({
       scrollDepthPct: snap.scrollDepthPct,
       activeSectionId: SECTION_ID,
       lastIntent: 'hero-cta-book',
+      sessionDurationMs,
+      clickDepth: snap.clickDepth + 1,
+      lastProductTag: snap.lastProductTag,
     });
 
     const { href } = buildWaDeepLink({
@@ -32,6 +38,13 @@ export function HeroCentered() {
       sectionId: SECTION_ID,
       businessName,
       url: typeof window !== 'undefined' ? window.location.href : undefined,
+      activity: {
+        scrollDepthPct: snap.scrollDepthPct,
+        sessionDurationMs,
+        clickDepth: snap.clickDepth + 1,
+        activeSectionId: SECTION_ID,
+        lastProductTag: snap.lastProductTag ?? undefined,
+      },
     });
 
     if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
@@ -50,6 +63,7 @@ export function HeroCentered() {
       ref={sectionRef}
       data-section-kind="hero"
       data-variant="centered"
+      data-category="skincare"
       style={{
         background:
           'radial-gradient(120% 80% at 50% 0%, color-mix(in srgb, var(--primary-color) 14%, #fff) 0%, #fff 70%)',

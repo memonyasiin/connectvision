@@ -6,7 +6,9 @@
 // autonomous LLM responder downstream) parses the URL state to know:
 //   - which page section the user was looking at when they reached out
 //   - what intent (booking, enquiry, quote) they signaled
-//   - what business they're talking to (tenant resolution)
+//   - which business they're talking to (tenant resolution)
+//   - product variant tags that drove their CTA tap
+//   - hyper-contextual session metrics (scroll depth, dwell, click depth)
 //
 // Spec: https://faq.whatsapp.com/5913398998672934
 //   Prefilled message: ?text=URL_ENCODED_STRING
@@ -17,6 +19,19 @@ export type WaIntent =
   | 'request-quote'
   | 'product-info'
   | 'support';
+
+/**
+ * Compact, server-parseable summary of the visitor's session. Streamed in
+ * the [CV:...] context tag so the LLM agent has it on the FIRST inbound
+ * message — no prior request needed.
+ */
+export interface ActivityVector {
+  scrollDepthPct?: number;
+  sessionDurationMs?: number;
+  clickDepth?: number;
+  activeSectionId?: string;
+  lastProductTag?: string;
+}
 
 export interface WaDeepLinkInput {
   /** Recipient phone, with or without country code. Country code required for cross-border. */
@@ -35,6 +50,8 @@ export interface WaDeepLinkInput {
   tenantSubdomain?: string;
   /** Locale for the prefilled greeting. */
   locale?: string;
+  /** Compact session-metrics payload — included in the [CV:...] tag. */
+  activity?: ActivityVector;
 }
 
 const DEFAULT_LOCALE = 'en-IN';
@@ -57,6 +74,16 @@ function encodeContextTag(input: WaDeepLinkInput): string {
   if (input.productTag)      params.set('cv_product', input.productTag);
   if (input.tenantSubdomain) params.set('cv_tenant', input.tenantSubdomain);
   if (input.url)             params.set('cv_url', input.url);
+
+  const a = input.activity;
+  if (a) {
+    if (typeof a.scrollDepthPct === 'number')    params.set('cv_scroll', String(Math.round(a.scrollDepthPct)));
+    if (typeof a.sessionDurationMs === 'number') params.set('cv_dwell', String(Math.round(a.sessionDurationMs / 1000)));
+    if (typeof a.clickDepth === 'number')        params.set('cv_clicks', String(a.clickDepth));
+    if (a.activeSectionId)                       params.set('cv_active', a.activeSectionId);
+    if (a.lastProductTag)                        params.set('cv_lasttag', a.lastProductTag);
+  }
+
   // ConnectVision context tag — the PataaWaa gateway parses this and forwards
   // to the LLM agent. Format chosen so it's grep-able in WhatsApp transcripts.
   return `\n\n[CV:${params.toString()}]`;
@@ -72,8 +99,8 @@ export interface BuiltDeepLink {
 export function buildWaDeepLink(input: WaDeepLinkInput): BuiltDeepLink {
   const phone = normalizePhone(input.phone);
   const locale = input.locale ?? DEFAULT_LOCALE;
-  const greet = (GREETINGS[locale] ?? GREETINGS[DEFAULT_LOCALE]!)(input.businessName);
-  const message = greet + encodeContextTag(input);
+  const greetingFn = GREETINGS[locale] ?? GREETINGS[DEFAULT_LOCALE]!;
+  const message = greetingFn(input.businessName) + encodeContextTag(input);
   const href = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   return { href, message };
 }
@@ -85,7 +112,7 @@ export function buildWaDeepLink(input: WaDeepLinkInput): BuiltDeepLink {
  */
 export function parseWaContextTag(body: string): Record<string, string> | null {
   const m = body.match(/\[CV:([^\]]+)\]/);
-  if (!m) return null;
+  if (!m || typeof m[1] !== 'string') return null;
   const params = new URLSearchParams(m[1]);
   const out: Record<string, string> = {};
   for (const [k, v] of params.entries()) out[k] = v;

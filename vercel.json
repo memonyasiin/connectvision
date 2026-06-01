@@ -1,0 +1,25 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "regions": ["bom1"],
+  "functions": {
+    "app/api/admin/workforce/route.ts": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "app/api/waa/webhook/route.ts": {
+      "memory": 1024,
+      "maxDuration": 30
+    },
+    "app/api/crm-sync/lead/route.ts": {
+      "memory": 1024,
+      "maxDuration": 15
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/admin/workforce",
+      "schedule": "0 0 * * *"
+    }
+  ]
+}

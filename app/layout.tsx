@@ -3,6 +3,10 @@ import type { ReactNode } from 'react';
 import { BuildProvider, DEFAULT_CONFIG } from '@/contexts/BuildContext';
 import './globals.css';
 
+// Side-effect import — registers every shipped theme's variants into the
+// dispatcher's BLOCK_REGISTRY exactly once per Node process / hydration.
+import '@/themes/_loadAll';
+
 export const metadata: Metadata = {
   title: 'ConnectVision — Business OS for SMBs',
   description: 'AI-powered website builder + unified SaaS gateway for small businesses.',

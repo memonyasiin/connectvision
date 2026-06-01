@@ -1,6 +1,7 @@
 'use client';
 
-// Split-layout hero variant. Reads from BuildContext.currentConfig.
+// Split-layout hero variant — skincare category. Reads from BuildContext +
+// streams the activity vector into the wa.me [CV:...] context tag.
 
 import { useBuild } from '@/contexts/BuildContext';
 import { useActivityTracker, getActivitySnapshot } from '@/hooks/useActivityTracker';
@@ -12,20 +13,22 @@ export function HeroSplit() {
   const { currentConfig, updateFunnel } = useBuild();
   const { businessName, tagline, description, funnelContext } = currentConfig;
 
-  // Tier-5 telemetry attaches via IntersectionObserver.
   const sectionRef = useActivityTracker({ sectionId: SECTION_ID, sectionKind: 'hero' });
 
   const handleCtaClick = () => {
     const phone = funnelContext.whatsappTarget;
     if (!phone) return;
 
-    // Pull the latest activity snapshot, push it into the funnelContext so
-    // the AI agent webhook has up-to-the-click telemetry to greet with.
     const snap = getActivitySnapshot();
+    const sessionDurationMs = Date.now() - snap.startedAt;
+
     updateFunnel({
       scrollDepthPct: snap.scrollDepthPct,
       activeSectionId: SECTION_ID,
       lastIntent: 'hero-cta-whatsapp',
+      sessionDurationMs,
+      clickDepth: snap.clickDepth + 1,
+      lastProductTag: snap.lastProductTag,
     });
 
     const { href } = buildWaDeepLink({
@@ -34,6 +37,13 @@ export function HeroSplit() {
       sectionId: SECTION_ID,
       businessName,
       url: typeof window !== 'undefined' ? window.location.href : undefined,
+      activity: {
+        scrollDepthPct: snap.scrollDepthPct,
+        sessionDurationMs,
+        clickDepth: snap.clickDepth + 1,
+        activeSectionId: SECTION_ID,
+        lastProductTag: snap.lastProductTag ?? undefined,
+      },
     });
 
     if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
@@ -52,6 +62,7 @@ export function HeroSplit() {
       ref={sectionRef}
       data-section-kind="hero"
       data-variant="split"
+      data-category="skincare"
       style={{
         background:
           'linear-gradient(135deg, #fff 0%, color-mix(in srgb, var(--primary-color) 8%, #fff) 100%)',
