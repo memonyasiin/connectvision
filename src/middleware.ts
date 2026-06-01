@@ -117,6 +117,18 @@ export function middleware(req: NextRequest): NextResponse {
   return buildTenantRewrite({ request: req, subdomain, profile: 'html' });
 }
 
-// NOTE: The Next.js `config` matcher MUST be defined in the root proxy.ts —
-// it can't be re-exported through another file. See `/proxy.ts` for the
-// matcher and the rename of `middleware` → `proxy` per Next 16 conventions.
+// ─────────────────────────────────────────────────────────────────────────────
+// Matcher config — defined inline (was previously in root proxy.ts)
+// ─────────────────────────────────────────────────────────────────────────────
+// Negative lookahead excludes Next internals, Vercel infra, API routes,
+// favicon, and any file with an extension (.png, .css, .js, .map, .ico, etc.)
+// so static assets ship straight through without host parsing overhead.
+//
+// Moved here from root proxy.ts because Vercel's build environment (as of
+// Next 16.2.x) expects `.next/server/middleware.js.nft.json` to exist —
+// the proxy.ts rename convention is recognised but the artifact path
+// detection lags. Keeping everything in src/middleware.ts is the
+// most-compatible setup.
+export const config = {
+  matcher: ['/((?!_next/|_vercel/|api/|favicon\\.ico|.*\\.[\\w]+$).*)'],
+};
