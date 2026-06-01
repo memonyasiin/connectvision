@@ -22,11 +22,14 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { buildTenantRewrite } from './lib/vercelProxy';
 
 // Apex domains we serve directly (no tenant rewrite).
-// Add staging / preview hosts here as they come online.
+// Note: every *.vercel.app host is auto-treated as apex by parseHost()
+// below; this set is just for non-Vercel apex hosts (production +
+// dev). Tenant subdomains under TENANT_BASE_DOMAINS are NOT here.
 const APEX_HOSTS = new Set<string>([
   'connectvision.io',
   'www.connectvision.io',
-  'connectvision-saas.vercel.app',
+  'connectvision.us',
+  'www.connectvision.us',
   'localhost:3100',
   '127.0.0.1:3100',
 ]);
@@ -54,12 +57,32 @@ interface HostParts {
   isApex: boolean;
 }
 
+/**
+ * The list of TENANT base-domains. A host that's `<sub>.<one-of-these>` is
+ * interpreted as a tenant; anything else is treated as apex (no rewrite).
+ *
+ * Added in the launch fix: connectvision.us (the actual purchased domain;
+ * .io was the original plan-doc placeholder).
+ */
+const TENANT_BASE_DOMAINS = new Set<string>([
+  'connectvision.io',
+  'connectvision.us',
+]);
+
 function parseHost(rawHost: string): HostParts {
   // Lowercase for case-insensitive matching. Keep port intact for APEX_HOSTS
   // lookup so localhost:3100 ≠ localhost:3000.
   const lower = rawHost.toLowerCase();
 
   if (APEX_HOSTS.has(lower)) {
+    return { host: lower, subdomain: null, isApex: true };
+  }
+
+  // Vercel preview deployments (`*-<hash>-<team>.vercel.app`,
+  // `<project>.vercel.app`, etc.) must NEVER be split into tenants —
+  // the entire prefix before .vercel.app is a Vercel-internal handle,
+  // not a customer subdomain. Same for any *.vercel.app domain.
+  if (lower.endsWith('.vercel.app')) {
     return { host: lower, subdomain: null, isApex: true };
   }
 
@@ -78,10 +101,16 @@ function parseHost(rawHost: string): HostParts {
     }
   }
 
+  // Tenant base-domain match — strict allow-list. Without this, a host
+  // like `www.example.com` would be incorrectly classified as the
+  // `www` tenant under the `example.com` base.
   if (parts.length >= 3) {
-    const sub = parts[0] ?? null;
-    if (sub && !RESERVED_SUBDOMAINS.has(sub) && sub !== 'www') {
-      return { host: lower, subdomain: sub, isApex: false };
+    const apexCandidate = parts.slice(-2).join('.'); // last two labels
+    if (TENANT_BASE_DOMAINS.has(apexCandidate)) {
+      const sub = parts[0] ?? null;
+      if (sub && !RESERVED_SUBDOMAINS.has(sub) && sub !== 'www') {
+        return { host: lower, subdomain: sub, isApex: false };
+      }
     }
   }
 
