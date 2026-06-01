@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────────────────
+   ConnectVision — base CSS var defaults.
+   BuildContext writes `--primary-color` on document.documentElement at
+   runtime; everything below is just the SSR fallback so the first paint
+   has a sensible value before the client-side useEffect kicks in.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  --primary-color:        #1c4d2a;
+  --cv-color-primary:     #1c4d2a;  /* legacy alias — BuildContext keeps it in sync */
+
+  --cv-font-heading:      "Playfair Display";
+  --cv-font-body:         "Inter";
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #ffffff;
+  color: #1a1a1a;
+  font-family: var(--cv-font-body), system-ui, sans-serif;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* { box-sizing: border-box; }
