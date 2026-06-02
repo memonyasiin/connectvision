@@ -399,14 +399,16 @@ function PurchaseCard({ purchase }: { purchase: PurchasedView }) {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-400 bg-stone-100 border border-stone-200 cursor-not-allowed"
-              title="Bundle generator ships in MODULE 10"
+            <a
+              href={`/api/dashboard/bundle/${purchase.draftId}`}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 transition-colors shadow-sm"
+              title="Download a self-contained .zip with your personalised HTML + CSS + deploy configs + license"
             >
-              Download bundle <span className="ml-1 text-[9px] font-mono uppercase tracking-wider bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded">soon</span>
-            </button>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                <path fillRule="evenodd" d="M10 3a.75.75 0 0 1 .75.75v8.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V3.75A.75.75 0 0 1 10 3Zm-7 12.75a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H3.75a.75.75 0 0 1-.75-.75Z" clipRule="evenodd" />
+              </svg>
+              Download bundle
+            </a>
             <Link
               href={`/customize/${purchase.themeSlug}` as Route}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-emerald-900 bg-white border border-emerald-900/20 hover:border-emerald-900/40 transition-colors"
