@@ -454,6 +454,14 @@ model CustomizationDraft {
   lockedAt    DateTime?
   purchasedAt DateTime?
 
+  // ── MODULE 15 — Transactional email (additive) ────────────────────────
+  // Set the moment we successfully fire the "your purchase is ready" email
+  // to the buyer. Used as the race-winner anchor for the verify-vs-webhook
+  // concurrency case: both routes try to send the email; the one that
+  // wins the atomic `updateMany where: emailSentAt: null` actually
+  // dispatches. Guarantees exactly-one email per purchase.
+  emailSentAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

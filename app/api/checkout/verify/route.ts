@@ -28,6 +28,13 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { sendTransactionalEmail } from '@/lib/transactionalEmail';
+import {
+  buildPurchaseEmail,
+  buildPurchaseEmailSubject,
+  buildPurchaseEmailText,
+} from '@/lib/buildPurchaseEmail';
+import { findThemeBySlug } from '@/data/themeMarketplaceCatalog';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -254,6 +261,21 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
+  // ── Fire-and-forget purchase confirmation email ─────────────────────────
+  // Atomic guard: only the FIRST handler that wins the
+  // `updateMany where: emailSentAt: null` actually dispatches the email.
+  // Webhook + verify can both arrive for the same purchase; this gate
+  // ensures exactly one email lands in the buyer's inbox.
+  void dispatchPurchaseEmail({
+    draftId: draft.id,
+    businessName: draft.businessName,
+    themeSlug: draft.themeSlug,
+    licenseKey,
+    toEmail: draft.contactEmail ?? draft.customerEmail ?? '',
+    purchasedAt,
+    req,
+  });
+
   return NextResponse.json({
     ok: true,
     wasAlreadyPurchased: false,
@@ -263,4 +285,83 @@ export async function POST(req: Request): Promise<NextResponse> {
     businessName: draft.businessName,
     purchasedAt: purchasedAt.toISOString(),
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Email dispatch helper — atomic guard + provider-agnostic send
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DispatchInput {
+  draftId: string;
+  businessName: string;
+  themeSlug: string;
+  licenseKey: string;
+  toEmail: string;
+  purchasedAt: Date;
+  req: Request;
+}
+
+async function dispatchPurchaseEmail(input: DispatchInput): Promise<void> {
+  if (!input.toEmail) {
+    // eslint-disable-next-line no-console
+    console.warn(`[checkout/verify] no email on draft ${input.draftId}, skipping send`);
+    return;
+  }
+
+  // Atomic win: only the handler that flips emailSentAt from null actually
+  // sends. Webhook concurrent dispatch loses the race + returns quietly.
+  const claim = await prisma.customizationDraft.updateMany({
+    where: { id: input.draftId, emailSentAt: null },
+    data: { emailSentAt: new Date() },
+  });
+  if (claim.count !== 1) return; // Lost race — another handler will (or did) send.
+
+  const theme = findThemeBySlug(input.themeSlug);
+  const themeName = theme?.name ?? input.themeSlug;
+
+  // Resolve the deployment base URL — prefer NEXTAUTH_URL, fall back to
+  // request origin so previews / .vercel.app URLs also produce live links.
+  const baseUrl =
+    process.env.NEXTAUTH_URL ??
+    new URL(input.req.url).origin;
+
+  const html = buildPurchaseEmail({
+    businessName: input.businessName,
+    themeName,
+    licenseKey: input.licenseKey,
+    toEmail: input.toEmail,
+    draftId: input.draftId,
+    siteBaseUrl: baseUrl,
+    purchasedAtIso: input.purchasedAt.toISOString(),
+  });
+  const text = buildPurchaseEmailText({
+    businessName: input.businessName,
+    themeName,
+    licenseKey: input.licenseKey,
+    toEmail: input.toEmail,
+    draftId: input.draftId,
+    siteBaseUrl: baseUrl,
+    purchasedAtIso: input.purchasedAt.toISOString(),
+  });
+
+  const result = await sendTransactionalEmail({
+    to: input.toEmail,
+    subject: buildPurchaseEmailSubject(themeName),
+    html,
+    text,
+    tag: 'purchase-confirmation',
+  });
+
+  if (!result.ok) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[checkout/verify] email dispatch failed (${result.via}) for draft ${input.draftId}: ${result.error}`,
+    );
+    // Roll back the emailSentAt claim so the webhook (or a retry) can
+    // attempt again. Safe — we know it was OUR claim because count was 1.
+    await prisma.customizationDraft.update({
+      where: { id: input.draftId },
+      data: { emailSentAt: null },
+    });
+  }
 }
