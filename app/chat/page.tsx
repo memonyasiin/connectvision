@@ -182,7 +182,10 @@ export default function ChatPage() {
 
   const stopSpeak = () => {
     try { window.speechSynthesis?.cancel(); } catch { /* */ }
-    if (audioRef.current) { try { audioRef.current.pause(); } catch { /* */ } }
+    if (audioRef.current) {
+      audioRef.current.onended = null; audioRef.current.onerror = null; // drop stale handlers
+      try { audioRef.current.pause(); } catch { /* */ }
+    }
     setSpeakingIdx(null);
   };
 
@@ -205,7 +208,12 @@ export default function ChatPage() {
         a.onerror = () => { URL.revokeObjectURL(url); browserSpeak(text, idx, onDone); };
         a.src = url;
         try { await a.play(); return; }
-        catch { URL.revokeObjectURL(url); browserSpeak(text, idx, onDone); return; }
+        catch (e) {
+          // AbortError = playback got interrupted by a newer speak() — NOT a real
+          // failure, so don't drop to the robotic browser voice for it.
+          if ((e as { name?: string })?.name === 'AbortError') { URL.revokeObjectURL(url); return; }
+          URL.revokeObjectURL(url); browserSpeak(text, idx, onDone); return;
+        }
       }
     } catch { /* fall through to browser TTS */ }
     browserSpeak(text, idx, onDone);
@@ -345,8 +353,19 @@ export default function ChatPage() {
   const voiceListenOnce = () => {
     if (!voiceModeRef.current) return;
     setVoiceStatus('listening');
-    const r = makeRecognizer((finalText) => {
-      const said = finalText.trim(); r.stop();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { alert('Voice mode needs Chrome / a browser with speech support.'); exitVoiceMode(); return; }
+    const r = new SR();
+    r.lang = 'en-IN'; r.continuous = true; r.interimResults = true;
+    let finalText = '';
+    let silence: ReturnType<typeof setTimeout> | null = null;
+    let submitted = false;
+    const doSubmit = () => {
+      if (submitted) return; submitted = true;
+      if (silence) clearTimeout(silence);
+      try { r.stop(); } catch { /* */ }
+      const said = finalText.trim();
       if (!said) { if (voiceModeRef.current) voiceListenOnce(); return; }
       setVoiceStatus('thinking');
       void (async () => {
@@ -355,11 +374,28 @@ export default function ChatPage() {
         setVoiceStatus('speaking');
         speak(answer, null, () => { if (voiceModeRef.current) voiceListenOnce(); });
       })();
-    });
-    if (!r) { alert('Voice mode needs Chrome / a browser with speech support.'); exitVoiceMode(); return; }
-    r.onerror = () => { if (voiceModeRef.current) setTimeout(voiceListenOnce, 600); };
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    r.onresult = (e: any) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalText += t + ' '; else interim += t;
+      }
+      // Wait ~1.8s of SILENCE after speech before submitting — lets the user
+      // finish their sentence with natural pauses (like ChatGPT/Gemini), instead
+      // of cutting off at the first short pause.
+      if (silence) clearTimeout(silence);
+      if (finalText.trim() || interim.trim()) silence = setTimeout(doSubmit, 1800);
+    };
+    r.onerror = () => { /* no-speech/aborted — onend handles restart */ };
+    r.onend = () => {
+      if (submitted) return;
+      if (finalText.trim()) doSubmit();
+      else if (voiceModeRef.current) { try { r.start(); } catch { setTimeout(voiceListenOnce, 300); } }
+    };
     recogRef.current = r;
-    try { r.start(); } catch { /* */ }
+    try { r.start(); } catch { setTimeout(voiceListenOnce, 400); }
   };
   const enterVoiceMode = () => { if (busy) return; unlockAudio(); setVoiceMode(true); voiceModeRef.current = true; setVoiceStatus('listening'); setTimeout(voiceListenOnce, 200); };
   const exitVoiceMode = () => { setVoiceMode(false); voiceModeRef.current = false; setVoiceStatus('idle'); try { recogRef.current?.stop(); } catch { /* */ } stopSpeak(); };
