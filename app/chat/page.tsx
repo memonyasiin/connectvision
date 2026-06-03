@@ -42,8 +42,10 @@ function cleanPrompt(t: string): string {
   return t.replace(/^\/(image|imagine|img)\b/i, '').trim() || t.trim();
 }
 function genImageUrl(prompt: string, seed: number): string {
-  const p = encodeURIComponent(prompt.slice(0, 400));
-  return `https://image.pollinations.ai/prompt/${p}?width=1024&height=1024&nologo=true&model=flux&seed=${seed}`;
+  // Same-origin route → HuggingFace FLUX (if HF_API_KEY) else 302 to Pollinations
+  // (browser loads from the user's own IP). See app/api/ai/image/route.ts.
+  const p = encodeURIComponent(prompt.slice(0, 480));
+  return `/api/ai/image?prompt=${p}&seed=${seed}`;
 }
 
 // Minimal, XSS-safe markdown-lite.
