@@ -73,6 +73,7 @@ export default function ChatPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [fileNote, setFileNote] = useState<{ name: string; text: string } | null>(null);
   const [greet, setGreet] = useState('Welcome');
+  const [user, setUser] = useState<{ name: string | null; email: string } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -161,6 +162,12 @@ export default function ChatPage() {
     const h = new Date().getHours();
     setGreet(h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening');
   }, []);
+
+  // Who's signed in (optional — chat works without an account too).
+  useEffect(() => {
+    fetch('/api/auth/me').then((r) => r.json()).then((d) => setUser(d.user ?? null)).catch(() => {});
+  }, []);
+  const logout = async () => { await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {}); setUser(null); };
 
   // ── File upload (text docs → injected as context) ──────────────────────────
   const TEXT_EXT = ['txt', 'md', 'csv', 'json', 'log', 'xml', 'html', 'js', 'ts', 'py', 'java', 'c', 'cpp', 'sql', 'yml', 'yaml'];
@@ -536,7 +543,19 @@ export default function ChatPage() {
               <span className="h-7 w-7 rounded-lg grid place-items-center text-xs font-black text-black" style={{ background: 'linear-gradient(135deg,#D4AF37,#f4e4a6)' }}>CV</span>
               <span className="font-semibold">ConnectVision AI</span>
             </div>
-            <button onClick={newChat} className="text-xs text-zinc-300 hover:text-white border border-white/10 rounded-full px-3 py-1.5">＋ New</button>
+            <div className="flex items-center gap-2">
+              <button onClick={newChat} className="text-xs text-zinc-300 hover:text-white border border-white/10 rounded-full px-3 py-1.5">＋ New</button>
+              {user ? (
+                <div className="flex items-center gap-2">
+                  <span className="h-7 w-7 rounded-full grid place-items-center text-xs font-bold text-black" style={{ background: 'linear-gradient(135deg,#16a34a,#86efac)' }} title={user.email}>
+                    {(user.name || user.email).charAt(0).toUpperCase()}
+                  </span>
+                  <button onClick={logout} className="text-xs text-zinc-400 hover:text-white">Logout</button>
+                </div>
+              ) : (
+                <Link href={'/login' as Route} className="text-xs font-medium text-black rounded-full px-3 py-1.5" style={{ background: 'linear-gradient(135deg,#D4AF37,#f4e4a6)' }}>Sign in</Link>
+              )}
+            </div>
           </div>
         </header>
 

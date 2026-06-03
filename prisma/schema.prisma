@@ -553,3 +553,15 @@ model CV_CustomerLedger {
   @@index([tenantId, lastVisitDate])
   @@map("cv_customer_ledger")
 }
+
+// App users for the public site / AI chat (email + password auth).
+model AppUser {
+  id        String   @id @default(cuid())
+  email     String   @unique @db.VarChar(190)
+  name      String?  @db.VarChar(120)
+  password  String   @db.VarChar(255) // scrypt "salt:hash"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("cv_app_users")
+}
