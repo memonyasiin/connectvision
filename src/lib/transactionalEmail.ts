@@ -55,8 +55,8 @@ export interface TransactionalEmailResult {
   providerId?: string;
   /** Short error message on failure. */
   error?: string;
-  /** Which provider handled the send: 'resend' | 'log-only'. */
-  via: 'resend' | 'log-only';
+  /** Which provider handled the send. */
+  via: 'resend' | 'bluehost-relay' | 'log-only';
 }
 
 /**
@@ -73,15 +73,26 @@ export async function sendTransactionalEmail(
   payload: TransactionalEmailPayload,
 ): Promise<TransactionalEmailResult> {
   const apiKey = process.env.RESEND_API_KEY;
-  const isLiveProvider = !!apiKey && !apiKey.startsWith('CHANGE_ME');
+  const isResend = !!apiKey && !apiKey.startsWith('CHANGE_ME');
 
-  if (!isLiveProvider) {
+  // Provider preference: Resend (best deliverability) → Bluehost PHP relay
+  // (connect@connectvision.us via the license-server box, no signup) →
+  // log-only (dev/preview). The relay covers the "no Resend account yet" gap.
+  if (!isResend) {
+    const relayUrl = process.env.CV_RELAY_URL;
+    const relaySecret = process.env.CV_RELAY_SECRET;
+    const relayLive = !!relayUrl && !!relaySecret && !relaySecret.startsWith('CHANGE_ME');
+
+    if (relayLive) {
+      return sendViaBluehostRelay(payload, relayUrl, relaySecret);
+    }
+
     // eslint-disable-next-line no-console
     console.warn(
       `[transactionalEmail] LOG-ONLY MODE — would send to ${payload.to}: ` +
       `subject="${payload.subject}" (${payload.html.length} chars)`,
     );
-    return { ok: false, via: 'log-only', error: 'RESEND_API_KEY not configured (log-only mode)' };
+    return { ok: false, via: 'log-only', error: 'No email provider configured (log-only mode)' };
   }
 
   const from = payload.from ?? process.env.CONNECTVISION_EMAIL_FROM ?? DEFAULT_FROM;
@@ -122,6 +133,54 @@ export async function sendTransactionalEmail(
       ok: false,
       via: 'resend',
       error: e instanceof Error ? e.message : 'Network fault',
+    };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bluehost PHP relay — send via connect@connectvision.us (no Resend account)
+// ─────────────────────────────────────────────────────────────────────────────
+// POSTs to the license-server box's /api/relay/send.php, authenticated with a
+// shared secret. That endpoint hands off to the local MTA (PHP mail()). Used
+// when RESEND_API_KEY is absent but CV_RELAY_URL + CV_RELAY_SECRET are set.
+
+async function sendViaBluehostRelay(
+  payload: TransactionalEmailPayload,
+  relayUrl: string,
+  relaySecret: string,
+): Promise<TransactionalEmailResult> {
+  const from = payload.from ?? process.env.CONNECTVISION_EMAIL_FROM ?? DEFAULT_FROM;
+  const replyTo = payload.replyTo ?? process.env.CONNECTVISION_EMAIL_REPLY_TO ?? DEFAULT_REPLY_TO;
+
+  const body: Record<string, unknown> = {
+    to: payload.to,
+    subject: payload.subject,
+    html: payload.html,
+    from,
+    reply_to: replyTo,
+  };
+  if (payload.text) body['text'] = payload.text;
+
+  try {
+    const res = await fetch(relayUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Relay-Secret': relaySecret,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '<no body>');
+      return { ok: false, via: 'bluehost-relay', error: `Relay HTTP ${res.status}: ${text.slice(0, 200)}` };
+    }
+    return { ok: true, via: 'bluehost-relay' };
+  } catch (e) {
+    return {
+      ok: false,
+      via: 'bluehost-relay',
+      error: e instanceof Error ? e.message : 'Relay network fault',
     };
   }
 }
