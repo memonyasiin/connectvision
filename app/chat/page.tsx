@@ -84,6 +84,7 @@ export default function ChatPage() {
   const inputRef = useRef('');
   const activeIdRef = useRef<string | null>(null);
   const messagesRef = useRef<Msg[]>([]);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { inputRef.current = input; }, [input]);
@@ -172,10 +173,41 @@ export default function ChatPage() {
   };
 
   // ── TTS ────────────────────────────────────────────────────────────────────
-  const stopSpeak = () => { try { window.speechSynthesis?.cancel(); } catch { /* */ } setSpeakingIdx(null); };
-  const speak = (text: string, idx: number | null, onDone?: () => void) => {
+  const stopSpeak = () => {
+    try { window.speechSynthesis?.cancel(); } catch { /* */ }
+    if (audioRef.current) { try { audioRef.current.pause(); } catch { /* */ } audioRef.current.src = ''; audioRef.current = null; }
+    setSpeakingIdx(null);
+  };
+
+  // Natural neural voice via Sarvam (/api/ai/tts). Falls back to the browser's
+  // speechSynthesis if Sarvam errors or isn't configured.
+  const speak = async (text: string, idx: number | null, onDone?: () => void): Promise<void> => {
+    if (!text.trim()) { onDone?.(); return; }
+    stopSpeak();
+    setSpeakingIdx(idx);
+    try {
+      const res = await fetch('/api/ai/tts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, lang: ttsLang(text) }),
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        audio.onended = () => { if (audioRef.current === audio) audioRef.current = null; URL.revokeObjectURL(url); setSpeakingIdx(null); onDone?.(); };
+        audio.onerror = () => { URL.revokeObjectURL(url); browserSpeak(text, idx, onDone); };
+        await audio.play();
+        return;
+      }
+    } catch { /* fall through to browser TTS */ }
+    browserSpeak(text, idx, onDone);
+  };
+
+  // Fallback: browser speechSynthesis (robotic-ish, but always available).
+  const browserSpeak = (text: string, idx: number | null, onDone?: () => void) => {
     const synth = window.speechSynthesis;
-    if (!synth || !text.trim()) { onDone?.(); return; }
+    if (!synth || !text.trim()) { setSpeakingIdx(null); onDone?.(); return; }
     synth.cancel();
     const lang = ttsLang(text);
     const u = new SpeechSynthesisUtterance(text.replace(/[*`#_>]/g, ''));
