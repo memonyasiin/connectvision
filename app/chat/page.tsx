@@ -19,6 +19,7 @@ interface Msg {
   content: string;
   image?: string | null;
   isGen?: boolean;
+  file?: string;   // attached text-file name (chip in the bubble)
 }
 interface Convo {
   id: string;
@@ -69,6 +70,9 @@ export default function ChatPage() {
   const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening' | 'thinking' | 'speaking'>('idle');
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [fileNote, setFileNote] = useState<{ name: string; text: string } | null>(null);
+  const [greet, setGreet] = useState('Welcome');
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -79,6 +83,8 @@ export default function ChatPage() {
   const activeIdRef = useRef<string | null>(null);
   const messagesRef = useRef<Msg[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const imgInputRef = useRef<HTMLInputElement | null>(null);
+  const docInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { inputRef.current = input; }, [input]);
@@ -147,6 +153,26 @@ export default function ChatPage() {
       }
       return next;
     });
+  };
+
+  // Time-based, community-neutral greeting (no religion/festival-specific words
+  // so it reads well for every customer — Hindu, Muslim, and everyone else).
+  useEffect(() => {
+    const h = new Date().getHours();
+    setGreet(h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening');
+  }, []);
+
+  // ── File upload (text docs → injected as context) ──────────────────────────
+  const TEXT_EXT = ['txt', 'md', 'csv', 'json', 'log', 'xml', 'html', 'js', 'ts', 'py', 'java', 'c', 'cpp', 'sql', 'yml', 'yaml'];
+  const onPickFile = (file: File) => {
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    if (TEXT_EXT.includes(ext) || file.type.startsWith('text/')) {
+      const reader = new FileReader();
+      reader.onload = () => setFileNote({ name: file.name, text: String(reader.result || '').slice(0, 6000) });
+      reader.readAsText(file);
+    } else {
+      alert('Abhi text files (.txt, .md, .csv, .json, code) + images support hain. PDF/Word jaldi aayenge.');
+    }
   };
 
   // ── Image upload (vision) ──────────────────────────────────────────────────
@@ -280,10 +306,11 @@ export default function ChatPage() {
   // ── Core send ──────────────────────────────────────────────────────────────
   const runSend = async (rawText: string, opts?: { forceGen?: boolean }): Promise<string> => {
     const text = rawText.trim();
-    if (!text && !image) return '';
+    const fn = fileNote; setFileNote(null);
+    if (!text && !image && !fn) return '';
     const sentImage = image; setImage(null);
 
-    if (!sentImage && (opts?.forceGen || genMode || isImageRequest(text))) {
+    if (!sentImage && !fn && (opts?.forceGen || genMode || isImageRequest(text))) {
       const prompt = cleanPrompt(text);
       const seed = Math.floor(Math.random() * 1_000_000_000);
       setMessages((p) => [...p, { role: 'user', content: text }, { role: 'assistant', content: `🎨 Generating "${prompt}"…`, image: genImageUrl(prompt, seed), isGen: true }]);
@@ -291,14 +318,14 @@ export default function ChatPage() {
       return `Maine "${prompt}" ki image bana di hai.`;
     }
 
-    const userMsg: Msg = { role: 'user', content: text || '(image)', image: sentImage };
-    // Build the request history from the LATEST messages (ref), not from inside
-    // a setState updater — the updater runs async, so `history` would be stale/
-    // empty when the fetch fires, which made the backend 400 and no reply ever
-    // streamed (the "stuck on … dots" bug).
+    const userMsg: Msg = { role: 'user', content: text || (sentImage ? '(image)' : ''), image: sentImage, file: fn?.name };
+    // The AI gets the file CONTENT appended; the bubble shows only a 📄 chip.
+    // History from the LATEST messages (ref), not a setState updater (async →
+    // stale/empty → backend 400 → the old "stuck on … dots" bug).
+    const apiContent = fn ? `${text}\n\n[Attached file "${fn.name}"]:\n\`\`\`\n${fn.text}\n\`\`\`` : (text || '(image)');
     const history: Msg[] = [
-      ...messagesRef.current.filter((m) => m.content.trim() || m.image),
-      userMsg,
+      ...messagesRef.current.filter((m) => m.content.trim() || m.image || m.file),
+      { role: 'user', content: apiContent },
     ];
     setMessages((p) => [...p, userMsg, { role: 'assistant', content: '' }]);
 
@@ -341,7 +368,7 @@ export default function ChatPage() {
 
   const send = async () => {
     const text = input.trim();
-    if ((!text && !image) || busy) return;
+    if ((!text && !image && !fileNote) || busy) return;
     unlockAudio();
     setInput(''); setBusy(true);
     if (taRef.current) taRef.current.style.height = 'auto';
@@ -412,29 +439,55 @@ export default function ChatPage() {
 
   // ── Shared composer pill (centered in empty state, docked at bottom in chat) ─
   const composer = (
-    <div className="w-full">
-      {image && (
-        <div className="mb-2 inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl p-1.5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={image} alt="preview" className="h-12 w-12 object-cover rounded-lg" />
-          <button onClick={() => setImage(null)} className="text-zinc-400 hover:text-white text-sm px-1">✕</button>
+    <div className="w-full relative">
+      {(image || fileNote) && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {image && (
+            <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl p-1.5">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={image} alt="preview" className="h-12 w-12 object-cover rounded-lg" />
+              <button onClick={() => setImage(null)} className="text-zinc-400 hover:text-white text-sm px-1">✕</button>
+            </div>
+          )}
+          {fileNote && (
+            <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm">
+              <span>📄</span><span className="text-zinc-200 max-w-[170px] truncate">{fileNote.name}</span>
+              <button onClick={() => setFileNote(null)} className="text-zinc-400 hover:text-white">✕</button>
+            </div>
+          )}
         </div>
       )}
       {genMode && <div className="mb-2 text-xs text-amber-300 text-center">🎨 Image mode — describe what to draw · <button onClick={() => setGenMode(false)} className="underline">cancel</button></div>}
+
+      {/* + attachment menu (only working options) */}
+      {menuOpen && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+          <div className="absolute bottom-full left-0 mb-2 z-20 w-64 bg-zinc-800 border border-white/10 rounded-2xl shadow-2xl py-2 text-sm overflow-hidden">
+            <button onClick={() => { setMenuOpen(false); imgInputRef.current?.click(); }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 text-left"><span className="text-lg">📷</span> Add photo</button>
+            <button onClick={() => { setMenuOpen(false); docInputRef.current?.click(); }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 text-left"><span className="text-lg">📎</span> Add file <span className="text-xs text-zinc-500">(.txt/.csv/code)</span></button>
+            <div className="my-1 border-t border-white/10" />
+            <button onClick={() => { setMenuOpen(false); setGenMode(true); taRef.current?.focus(); }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 text-left"><span className="text-lg">🎨</span> Create an image</button>
+            <button onClick={() => { setMenuOpen(false); enterVoiceMode(); }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 text-left"><span className="text-lg">🎧</span> Voice conversation</button>
+          </div>
+        </>
+      )}
+
       <div className="flex items-center gap-1 bg-zinc-800/70 border border-white/10 rounded-[26px] px-1.5 py-1.5 shadow-2xl shadow-black/50 focus-within:border-white/25 transition-colors">
-        <label className="h-9 w-9 shrink-0 grid place-items-center rounded-full hover:bg-white/10 cursor-pointer text-zinc-300 text-lg" title="Attach image">🖼️
-          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onPickImage(f); e.target.value = ''; }} />
-        </label>
-        <button onClick={() => setGenMode((v) => !v)} title="Generate image" className={`h-9 w-9 shrink-0 grid place-items-center rounded-full text-lg ${genMode ? 'bg-amber-400/30 text-amber-200' : 'hover:bg-white/10 text-zinc-300'}`}>🎨</button>
+        <button onClick={() => setMenuOpen((v) => !v)} title="Add photos & files" className={`h-9 w-9 shrink-0 grid place-items-center rounded-full text-2xl leading-none ${menuOpen ? 'bg-white/15 text-white' : 'hover:bg-white/10 text-zinc-200'}`}>+</button>
         <textarea ref={taRef} value={input} rows={1} onKeyDown={onKey}
           onChange={(e) => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px'; }}
           placeholder={listening ? 'Listening…' : genMode ? 'Describe the image…' : 'Ask anything…'}
           className="flex-1 bg-transparent outline-none resize-none py-1.5 px-1 text-[15px] placeholder:text-zinc-500 max-h-36" />
         <button onClick={toggleMic} title="Voice input" className={`h-9 w-9 shrink-0 grid place-items-center rounded-full text-lg ${listening ? 'bg-red-500/30 animate-pulse text-red-200' : 'hover:bg-white/10 text-zinc-300'}`}>🎤</button>
-        {(input.trim() || image)
+        {(input.trim() || image || fileNote)
           ? <button onClick={send} disabled={busy} className="h-9 w-9 shrink-0 grid place-items-center rounded-full text-black text-lg font-bold disabled:opacity-40" style={{ background: 'linear-gradient(135deg,#D4AF37,#f4e4a6)' }} title="Send">{busy ? '…' : '↑'}</button>
           : <button onClick={enterVoiceMode} title="Voice conversation" className="h-9 w-9 shrink-0 grid place-items-center rounded-full bg-white text-black text-base hover:opacity-90">🎧</button>}
       </div>
+
+      {/* hidden file inputs triggered by the + menu */}
+      <input ref={imgInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onPickImage(f); e.target.value = ''; }} />
+      <input ref={docInputRef} type="file" accept=".txt,.md,.csv,.json,.log,.xml,.html,.js,.ts,.py,.java,.c,.cpp,.sql,.yml,.yaml,text/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onPickFile(f); e.target.value = ''; }} />
     </div>
   );
   const CHIPS: { icon: string; label: string; act: () => void }[] = [
@@ -492,8 +545,8 @@ export default function ChatPage() {
           <div className="relative flex-1 flex flex-col items-center justify-center px-4 pb-16">
             <div className="w-full max-w-2xl text-center">
               <h1 className="text-3xl md:text-[2.6rem] font-semibold tracking-tight mb-9">
-                Namaste 👋{' '}
-                <span className="bg-gradient-to-r from-amber-300 via-amber-200 to-emerald-300 bg-clip-text text-transparent">kya poochein?</span>
+                {greet} 👋{' '}
+                <span className="bg-gradient-to-r from-amber-300 via-amber-200 to-emerald-300 bg-clip-text text-transparent">how can I help?</span>
               </h1>
               {composer}
               <div className="flex flex-wrap justify-center gap-2 mt-5">
@@ -531,9 +584,12 @@ export default function ChatPage() {
                           {m.isGen && <a href={m.image} target="_blank" rel="noopener noreferrer" className="inline-block mt-1 text-xs text-emerald-400 hover:text-emerald-300">⬇ Open / save image</a>}
                         </div>
                       )}
+                      {m.file && (
+                        <div className="mb-2 inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm">📄 <span className="text-zinc-300 max-w-[200px] truncate">{m.file}</span></div>
+                      )}
                       {m.content
                         ? <div className="text-[15px] leading-relaxed text-zinc-100 break-words" dangerouslySetInnerHTML={{ __html: render(m.content) }} />
-                        : <div className="flex gap-1 pt-1"><Dot /><Dot /><Dot /></div>}
+                        : (m.role === 'assistant' ? <div className="flex gap-1 pt-1"><Dot /><Dot /><Dot /></div> : null)}
                     </div>
                   </div>
                 ))}
