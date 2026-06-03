@@ -39,15 +39,18 @@ export async function GET(req: NextRequest): Promise<Response> {
   const hf = process.env.HF_API_KEY;
   if (hf && !hf.startsWith('CHANGE_ME')) {
     try {
-      const r = await fetch(`https://api-inference.huggingface.co/models/${HF_MODEL}`, {
+      // HF replaced the classic api-inference.huggingface.co/models/* host with
+      // the router (router.huggingface.co/hf-inference/models/*). The old host
+      // is gone → every call failed → we silently fell back to Pollinations.
+      const r = await fetch(`https://router.huggingface.co/hf-inference/models/${HF_MODEL}`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${hf}`,
           'Content-Type': 'application/json',
-          Accept: 'image/png',
+          Accept: 'image/jpeg',
         },
         body: JSON.stringify({ inputs: prompt, parameters: { seed: Number(seed) } }),
-        signal: AbortSignal.timeout(9000),
+        signal: AbortSignal.timeout(28000), // FLUX cold-start can take ~20s
       });
       const ct = r.headers.get('content-type') ?? '';
       if (r.ok && ct.startsWith('image/')) {
