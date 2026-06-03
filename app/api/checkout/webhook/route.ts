@@ -60,6 +60,7 @@ import {
   buildPurchaseEmailSubject,
   buildPurchaseEmailText,
 } from '@/lib/buildPurchaseEmail';
+import { registerLicenseInServer } from '@/lib/registerLicense';
 import { findThemeBySlug } from '@/data/themeMarketplaceCatalog';
 
 export const runtime = 'nodejs';
@@ -272,6 +273,20 @@ export async function POST(req: Request): Promise<NextResponse> {
             purchasedAt,
           },
         });
+
+        // Fire-and-forget: mirror the license into the PHP license server
+        // (shared `licenses` table). Idempotent vs the /verify path.
+        {
+          const theme = findThemeBySlug(draft.themeSlug);
+          void registerLicenseInServer({
+            licenseKey,
+            email: draft.contactEmail ?? draft.customerEmail ?? null,
+            themeSlug: draft.themeSlug,
+            themeName: theme?.name ?? draft.themeSlug,
+            draftId: draft.id,
+            businessName: draft.businessName,
+          });
+        }
 
         // Fire-and-forget purchase email. Atomic guard inside ensures
         // exactly one email per purchase even if /verify is racing.

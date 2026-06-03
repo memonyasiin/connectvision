@@ -34,6 +34,7 @@ import {
   buildPurchaseEmailSubject,
   buildPurchaseEmailText,
 } from '@/lib/buildPurchaseEmail';
+import { registerLicenseInServer } from '@/lib/registerLicense';
 import { findThemeBySlug } from '@/data/themeMarketplaceCatalog';
 
 export const runtime = 'nodejs';
@@ -259,6 +260,21 @@ export async function POST(req: Request): Promise<NextResponse> {
       err(500, 'INTERNAL_FAULT', 'Could not finalise the purchase. Please contact support.'),
       { status: 500 },
     );
+  }
+
+  // ── Fire-and-forget: mirror the license into the PHP license server ──────
+  // Registers the issued key in the shared `licenses` table so
+  // license.connectvision.us recognises it. Idempotent vs the webhook path.
+  {
+    const theme = findThemeBySlug(draft.themeSlug);
+    void registerLicenseInServer({
+      licenseKey,
+      email: draft.contactEmail ?? draft.customerEmail ?? null,
+      themeSlug: draft.themeSlug,
+      themeName: theme?.name ?? draft.themeSlug,
+      draftId: draft.id,
+      businessName: draft.businessName,
+    });
   }
 
   // ── Fire-and-forget purchase confirmation email ─────────────────────────
