@@ -21,9 +21,19 @@ import { NextResponse } from 'next/server';
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
-const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
-const TEXT_MODEL = 'llama-3.3-70b-versatile';
-const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+// ── Provider-agnostic config (OpenAI-compatible) ─────────────────────────────
+// Defaults to Groq (free, hosted). To go SELF-HOSTED later — zero code change —
+// just set these env vars and redeploy. Ollama / vLLM / TGI all speak the same
+// OpenAI /chat/completions API:
+//   LLM_BASE_URL=http://YOUR_GPU_SERVER:11434/v1   (Ollama)
+//   LLM_API_KEY=ollama                              (any non-empty; Ollama ignores it)
+//   LLM_TEXT_MODEL=llama3.3
+//   LLM_VISION_MODEL=llama3.2-vision
+// No vendor lock-in: the app keeps working, the inference just moves to your box.
+const LLM_BASE = (process.env.LLM_BASE_URL ?? 'https://api.groq.com/openai/v1').replace(/\/+$/, '');
+const CHAT_ENDPOINT = `${LLM_BASE}/chat/completions`;
+const TEXT_MODEL = process.env.LLM_TEXT_MODEL ?? process.env.LLM_MODEL ?? 'llama-3.3-70b-versatile';
+const VISION_MODEL = process.env.LLM_VISION_MODEL ?? 'meta-llama/llama-4-scout-17b-16e-instruct';
 
 const SYSTEM_PROMPT =
   'You are ConnectVision AI — a helpful, sharp assistant for Indian merchants and ' +
@@ -104,7 +114,7 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        const upstream = await fetch(GROQ_ENDPOINT, {
+        const upstream = await fetch(CHAT_ENDPOINT, {
           method: 'POST',
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ model, messages: msgs, stream: true, temperature: 0.5, max_tokens: 1536 }),
