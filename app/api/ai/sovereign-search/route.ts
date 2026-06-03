@@ -118,22 +118,13 @@ function buildContextMessages(
 // streamed final-chunk has plausibly varied data per request.
 
 async function fetchSovereignCitations(
-  query: string,
+  _query: string,
 ): Promise<CitationMetadata[]> {
-  const sanitized = query.trim().slice(0, 80);
-  return [
-    {
-      title: 'Real-Time Cloud Commerce Protocol & Roster Guidelines',
-      url: 'https://connectvision.io/docs',
-      snippet:
-        'Operational frameworks for multi-tenant merchant transaction endpoints, automated ledgers, and workforce calculations.',
-    },
-    {
-      title: 'GSTIN Compliance & Merchant Regulations 2026',
-      url: 'https://www.gst.gov.in',
-      snippet: `Contextual telemetry mapping merchant GSTIN auto-verifications for "${sanitized}".`,
-    },
-  ];
+  // No real web-search provider is wired yet. Returning hardcoded placeholder
+  // sources showed the SAME two irrelevant links under every answer, which
+  // read as broken to users. Return NONE until a real crawler (Tavily/Serper/
+  // Brave) ships — the client hides the citation rail when this is empty.
+  return [];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
