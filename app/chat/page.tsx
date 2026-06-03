@@ -173,14 +173,27 @@ export default function ChatPage() {
   };
 
   // ── TTS ────────────────────────────────────────────────────────────────────
+  // ONE persistent <audio> element, unlocked on a user gesture. Mobile browsers
+  // block audio.play() unless a play() was first invoked inside a user gesture;
+  // since our Sarvam audio arrives AFTER an async fetch (gesture already gone),
+  // we prime this element on tap (unlockAudio) and then just swap its src.
+  const audioUnlockedRef = useRef(false);
+  const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+  const getAudio = (): HTMLAudioElement => { if (!audioRef.current) audioRef.current = new Audio(); return audioRef.current; };
+  const unlockAudio = () => {
+    if (audioUnlockedRef.current) return;
+    const a = getAudio();
+    try { a.src = SILENT_WAV; a.play().then(() => { audioUnlockedRef.current = true; }).catch(() => { /* */ }); } catch { /* */ }
+  };
+
   const stopSpeak = () => {
     try { window.speechSynthesis?.cancel(); } catch { /* */ }
-    if (audioRef.current) { try { audioRef.current.pause(); } catch { /* */ } audioRef.current.src = ''; audioRef.current = null; }
+    if (audioRef.current) { try { audioRef.current.pause(); } catch { /* */ } }
     setSpeakingIdx(null);
   };
 
   // Natural neural voice via Sarvam (/api/ai/tts). Falls back to the browser's
-  // speechSynthesis if Sarvam errors or isn't configured.
+  // speechSynthesis if Sarvam errors / playback is blocked / not configured.
   const speak = async (text: string, idx: number | null, onDone?: () => void): Promise<void> => {
     if (!text.trim()) { onDone?.(); return; }
     stopSpeak();
@@ -193,12 +206,12 @@ export default function ChatPage() {
       if (res.ok) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audioRef.current = audio;
-        audio.onended = () => { if (audioRef.current === audio) audioRef.current = null; URL.revokeObjectURL(url); setSpeakingIdx(null); onDone?.(); };
-        audio.onerror = () => { URL.revokeObjectURL(url); browserSpeak(text, idx, onDone); };
-        await audio.play();
-        return;
+        const a = getAudio();
+        a.onended = () => { URL.revokeObjectURL(url); setSpeakingIdx(null); onDone?.(); };
+        a.onerror = () => { URL.revokeObjectURL(url); browserSpeak(text, idx, onDone); };
+        a.src = url;
+        try { await a.play(); return; }
+        catch { URL.revokeObjectURL(url); browserSpeak(text, idx, onDone); return; }
       }
     } catch { /* fall through to browser TTS */ }
     browserSpeak(text, idx, onDone);
@@ -327,6 +340,7 @@ export default function ChatPage() {
   const send = async () => {
     const text = input.trim();
     if ((!text && !image) || busy) return;
+    unlockAudio();
     setInput(''); setBusy(true);
     if (taRef.current) taRef.current.style.height = 'auto';
     await runSend(text); setBusy(false);
@@ -353,7 +367,7 @@ export default function ChatPage() {
     recogRef.current = r;
     try { r.start(); } catch { /* */ }
   };
-  const enterVoiceMode = () => { if (busy) return; setVoiceMode(true); voiceModeRef.current = true; setVoiceStatus('listening'); setTimeout(voiceListenOnce, 200); };
+  const enterVoiceMode = () => { if (busy) return; unlockAudio(); setVoiceMode(true); voiceModeRef.current = true; setVoiceStatus('listening'); setTimeout(voiceListenOnce, 200); };
   const exitVoiceMode = () => { setVoiceMode(false); voiceModeRef.current = false; setVoiceStatus('idle'); try { recogRef.current?.stop(); } catch { /* */ } stopSpeak(); };
 
   return (
@@ -418,7 +432,7 @@ export default function ChatPage() {
                       <div className="text-xs text-zinc-500 mb-1 flex items-center gap-2">
                         {m.role === 'user' ? 'You' : 'ConnectVision AI'}
                         {m.role === 'assistant' && m.content && !m.isGen && (
-                          <button onClick={() => (speakingIdx === i ? stopSpeak() : speak(m.content, i))} className="text-zinc-500 hover:text-white" title="Read aloud">{speakingIdx === i ? '⏹' : '🔊'}</button>
+                          <button onClick={() => { unlockAudio(); if (speakingIdx === i) stopSpeak(); else void speak(m.content, i); }} className="text-zinc-500 hover:text-white" title="Read aloud">{speakingIdx === i ? '⏹' : '🔊'}</button>
                         )}
                       </div>
                       {m.image && (
