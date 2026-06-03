@@ -28,12 +28,6 @@ interface Convo {
 }
 
 const LS_KEY = 'cv_chat_convos';
-const EXAMPLES = [
-  'GSTIN kya hota hai aur kaise apply karun?',
-  'Ek skincare brand ka logo banao 🎨',
-  'Write a WhatsApp message for a Diwali sale',
-  'UPI vs card — which is cheaper for my shop?',
-];
 
 function newId(): string { return 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function titleFrom(msgs: Msg[]): string {
@@ -370,6 +364,40 @@ export default function ChatPage() {
   const enterVoiceMode = () => { if (busy) return; unlockAudio(); setVoiceMode(true); voiceModeRef.current = true; setVoiceStatus('listening'); setTimeout(voiceListenOnce, 200); };
   const exitVoiceMode = () => { setVoiceMode(false); voiceModeRef.current = false; setVoiceStatus('idle'); try { recogRef.current?.stop(); } catch { /* */ } stopSpeak(); };
 
+  // ── Shared composer pill (centered in empty state, docked at bottom in chat) ─
+  const composer = (
+    <div className="w-full">
+      {image && (
+        <div className="mb-2 inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl p-1.5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={image} alt="preview" className="h-12 w-12 object-cover rounded-lg" />
+          <button onClick={() => setImage(null)} className="text-zinc-400 hover:text-white text-sm px-1">✕</button>
+        </div>
+      )}
+      {genMode && <div className="mb-2 text-xs text-amber-300 text-center">🎨 Image mode — describe what to draw · <button onClick={() => setGenMode(false)} className="underline">cancel</button></div>}
+      <div className="flex items-center gap-1 bg-zinc-800/70 border border-white/10 rounded-[26px] px-1.5 py-1.5 shadow-2xl shadow-black/50 focus-within:border-white/25 transition-colors">
+        <label className="h-9 w-9 shrink-0 grid place-items-center rounded-full hover:bg-white/10 cursor-pointer text-zinc-300 text-lg" title="Attach image">🖼️
+          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onPickImage(f); e.target.value = ''; }} />
+        </label>
+        <button onClick={() => setGenMode((v) => !v)} title="Generate image" className={`h-9 w-9 shrink-0 grid place-items-center rounded-full text-lg ${genMode ? 'bg-amber-400/30 text-amber-200' : 'hover:bg-white/10 text-zinc-300'}`}>🎨</button>
+        <textarea ref={taRef} value={input} rows={1} onKeyDown={onKey}
+          onChange={(e) => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px'; }}
+          placeholder={listening ? 'Listening…' : genMode ? 'Describe the image…' : 'Ask anything…'}
+          className="flex-1 bg-transparent outline-none resize-none py-1.5 px-1 text-[15px] placeholder:text-zinc-500 max-h-36" />
+        <button onClick={toggleMic} title="Voice input" className={`h-9 w-9 shrink-0 grid place-items-center rounded-full text-lg ${listening ? 'bg-red-500/30 animate-pulse text-red-200' : 'hover:bg-white/10 text-zinc-300'}`}>🎤</button>
+        {(input.trim() || image)
+          ? <button onClick={send} disabled={busy} className="h-9 w-9 shrink-0 grid place-items-center rounded-full text-black text-lg font-bold disabled:opacity-40" style={{ background: 'linear-gradient(135deg,#D4AF37,#f4e4a6)' }} title="Send">{busy ? '…' : '↑'}</button>
+          : <button onClick={enterVoiceMode} title="Voice conversation" className="h-9 w-9 shrink-0 grid place-items-center rounded-full bg-white text-black text-base hover:opacity-90">🎧</button>}
+      </div>
+    </div>
+  );
+  const CHIPS: { icon: string; label: string; act: () => void }[] = [
+    { icon: '🎨', label: 'Create an image', act: () => { setGenMode(true); taRef.current?.focus(); } },
+    { icon: '🧾', label: 'GSTIN help', act: () => setInput('GSTIN kaise apply karun? short steps') },
+    { icon: '✍️', label: 'Write a message', act: () => setInput('Diwali sale ke liye ek WhatsApp message likho') },
+    { icon: '🎧', label: 'Talk to me', act: enterVoiceMode },
+  ];
+
   return (
     <div className="flex h-[100dvh] bg-zinc-950 text-zinc-100 overflow-hidden">
       {/* Sidebar */}
@@ -397,33 +425,46 @@ export default function ChatPage() {
       {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/50 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
       {/* Main */}
-      <div className="flex flex-col flex-1 min-w-0">
-        <header className="shrink-0 border-b border-white/10 bg-zinc-950/80 backdrop-blur">
+      <div className="relative flex flex-col flex-1 min-w-0">
+        {/* ambient glow (Gemini-style) */}
+        <div aria-hidden className="pointer-events-none absolute inset-0"
+          style={{ background: 'radial-gradient(ellipse 70% 45% at 50% -8%, rgba(22,163,74,0.16), transparent 70%)' }} />
+
+        <header className="relative shrink-0">
           <div className="px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <button onClick={() => setSidebarOpen(true)} className="md:hidden h-8 w-8 grid place-items-center rounded-lg hover:bg-white/10 text-lg">☰</button>
               <span className="h-7 w-7 rounded-lg grid place-items-center text-xs font-black text-black" style={{ background: 'linear-gradient(135deg,#D4AF37,#f4e4a6)' }}>CV</span>
               <span className="font-semibold">ConnectVision AI</span>
             </div>
-            <button onClick={newChat} className="text-xs text-zinc-400 hover:text-white border border-white/10 rounded-lg px-3 py-1.5">New chat</button>
+            <button onClick={newChat} className="text-xs text-zinc-300 hover:text-white border border-white/10 rounded-full px-3 py-1.5">＋ New</button>
           </div>
         </header>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto">
-          <div className="max-w-3xl mx-auto px-4 py-6">
-            {messages.length === 0 ? (
-              <div className="mt-10 text-center">
-                <div className="h-14 w-14 mx-auto rounded-2xl grid place-items-center text-2xl mb-4" style={{ background: 'linear-gradient(135deg,#1c4d2a,#16a34a)' }}>🤖</div>
-                <h1 className="text-2xl font-bold mb-1">ConnectVision AI</h1>
-                <p className="text-zinc-400 text-sm mb-8">Type · speak 🎤 · generate images 🎨 · talk hands-free 🎧</p>
-                <div className="grid sm:grid-cols-2 gap-2 text-left">
-                  {EXAMPLES.map((ex) => (
-                    <button key={ex} onClick={() => setInput(ex)} className="text-sm text-zinc-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl px-4 py-3">{ex}</button>
-                  ))}
-                </div>
+        {messages.length === 0 ? (
+          /* ── Empty hero — centered (ChatGPT/Gemini-style) ── */
+          <div className="relative flex-1 flex flex-col items-center justify-center px-4 pb-16">
+            <div className="w-full max-w-2xl text-center">
+              <h1 className="text-3xl md:text-[2.6rem] font-semibold tracking-tight mb-9">
+                Namaste 👋{' '}
+                <span className="bg-gradient-to-r from-amber-300 via-amber-200 to-emerald-300 bg-clip-text text-transparent">kya poochein?</span>
+              </h1>
+              {composer}
+              <div className="flex flex-wrap justify-center gap-2 mt-5">
+                {CHIPS.map((c) => (
+                  <button key={c.label} onClick={c.act}
+                    className="inline-flex items-center gap-2 text-sm text-zinc-300 bg-white/[0.04] hover:bg-white/10 border border-white/10 rounded-full px-4 py-2 transition-colors">
+                    <span>{c.icon}</span>{c.label}
+                  </button>
+                ))}
               </div>
-            ) : (
-              <div className="space-y-6">
+            </div>
+          </div>
+        ) : (
+          /* ── Active chat ── */
+          <>
+            <div ref={scrollRef} className="relative flex-1 overflow-y-auto">
+              <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
                 {messages.map((m, i) => (
                   <div key={i} className="flex gap-3">
                     <div className={`h-8 w-8 shrink-0 rounded-lg grid place-items-center text-sm ${m.role === 'user' ? 'bg-white/10' : ''}`}
@@ -451,38 +492,13 @@ export default function ChatPage() {
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Composer */}
-        <div className="shrink-0 border-t border-white/10 bg-zinc-950">
-          <div className="max-w-3xl mx-auto px-4 py-3">
-            {image && (
-              <div className="mb-2 inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg p-1.5">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={image} alt="preview" className="h-12 w-12 object-cover rounded" />
-                <button onClick={() => setImage(null)} className="text-zinc-400 hover:text-white text-sm px-1">✕</button>
-              </div>
-            )}
-            {genMode && <div className="mb-2 text-xs text-amber-300">🎨 Image mode — type what to draw. <button onClick={() => setGenMode(false)} className="underline">cancel</button></div>}
-            <div className="flex items-end gap-1.5 bg-white/5 border border-white/10 rounded-2xl px-2 py-2 focus-within:border-emerald-500/50">
-              <label className="h-9 w-9 shrink-0 grid place-items-center rounded-lg hover:bg-white/10 cursor-pointer text-lg" title="Upload image">🖼️
-                <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onPickImage(f); e.target.value = ''; }} />
-              </label>
-              <button onClick={() => setGenMode((v) => !v)} title="Generate image" className={`h-9 w-9 shrink-0 grid place-items-center rounded-lg text-lg ${genMode ? 'bg-amber-400/30' : 'hover:bg-white/10'}`}>🎨</button>
-              <button onClick={toggleMic} title="Voice input" className={`h-9 w-9 shrink-0 grid place-items-center rounded-lg text-lg ${listening ? 'bg-red-500/30 animate-pulse' : 'hover:bg-white/10'}`}>🎤</button>
-              <button onClick={enterVoiceMode} title="Voice conversation" className="h-9 w-9 shrink-0 grid place-items-center rounded-lg text-lg hover:bg-white/10">🎧</button>
-              <textarea ref={taRef} value={input} rows={1} onKeyDown={onKey}
-                onChange={(e) => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px'; }}
-                placeholder={listening ? 'Listening…' : genMode ? 'Describe the image…' : 'Message ConnectVision AI…'}
-                className="flex-1 bg-transparent outline-none resize-none py-1.5 text-[15px] placeholder:text-zinc-500 max-h-40" />
-              <button onClick={send} disabled={busy || (!input.trim() && !image)} className="h-9 w-9 shrink-0 grid place-items-center rounded-lg text-black disabled:opacity-30"
-                style={{ background: 'linear-gradient(135deg,#D4AF37,#f4e4a6)' }} title="Send">{busy ? '…' : '➤'}</button>
             </div>
-            <div className="text-center text-[11px] text-zinc-600 mt-2">ConnectVision AI · text · vision · image-gen · voice</div>
-          </div>
-        </div>
+            <div className="relative shrink-0 px-4 pb-4 pt-1">
+              <div className="max-w-3xl mx-auto">{composer}</div>
+              <div className="text-center text-[11px] text-zinc-600 mt-2">ConnectVision AI · Groq · FLUX · Sarvam voice</div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Voice overlay */}
