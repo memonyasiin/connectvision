@@ -102,6 +102,12 @@ function SiteHeader() {
           <Link href={'/app' as Route} className="hover:text-emerald-700 transition-colors">
             Mobile app
           </Link>
+          <Link href={'/about' as Route} className="hover:text-emerald-700 transition-colors">
+            About
+          </Link>
+          <Link href={'/contact' as Route} className="hover:text-emerald-700 transition-colors">
+            Contact
+          </Link>
         </nav>
         <Link
           href={'/themes' as Route}
@@ -495,17 +501,22 @@ function SiteFooter() {
           </div>
           <ul className="space-y-1.5 text-xs">
             <li><Link href={'/themes' as Route} className="hover:text-emerald-700">All themes</Link></li>
+            <li><Link href={'/app' as Route} className="hover:text-emerald-700">Mobile app</Link></li>
             <li><Link href={'/dashboard' as Route} className="hover:text-emerald-700">My purchases</Link></li>
             <li><Link href={'/admin/onboard' as Route} className="hover:text-emerald-700">For merchants</Link></li>
           </ul>
         </div>
         <div>
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-700 mb-2">
-            Legal
+            Company
           </div>
-          <p className="text-xs text-slate-500 leading-relaxed">
-            Every purchase ships with a lifetime use licence. GST-compliant
-            invoice with every order. Secured by Razorpay.
+          <ul className="space-y-1.5 text-xs">
+            <li><Link href={'/about' as Route} className="hover:text-emerald-700">About us</Link></li>
+            <li><Link href={'/contact' as Route} className="hover:text-emerald-700">Contact us</Link></li>
+            <li><a href="mailto:support@connectvision.us" className="hover:text-emerald-700">support@connectvision.us</a></li>
+          </ul>
+          <p className="text-[11px] text-slate-400 leading-relaxed mt-3">
+            Lifetime licence + GST invoice with every order. Secured by Razorpay.
           </p>
         </div>
       </div>
