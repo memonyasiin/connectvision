@@ -41,9 +41,13 @@ export interface RegisterLicenseResult {
 }
 
 /**
- * Mirror an issued license into the shared `licenses` table. Lifetime theme
- * licences have no expiry (expires_at stays NULL) and are 'active' on issue —
- * the PHP verify endpoint binds machine_id on first activation. Never throws.
+ * Mirror an issued license into the shared `licenses` table as 'unassigned'
+ * (registered + ready to activate). Lifetime theme licences have no expiry
+ * (expires_at NULL). The consumer (theme bundle / site) calls the license
+ * server's activate endpoint on first run to bind a machine_id and flip the
+ * row to 'active'; verify() then passes. Registering as 'active' here would be
+ * wrong — verify() requires a machine_id match, which doesn't exist until
+ * activation. Never throws.
  */
 export async function registerLicenseInServer(
   input: RegisterLicenseInput,
@@ -57,15 +61,16 @@ export async function registerLicenseInServer(
       businessName: input.businessName,
     });
 
-    // plan 'lifetime', status 'active', expires_at NULL (perpetual). meta is a
-    // JSON string bound to the JSON column. ON DUPLICATE KEY keeps it idempotent.
+    // status 'unassigned', expires_at NULL (perpetual). meta is a JSON string
+    // bound to the JSON column. ON DUPLICATE KEY keeps the verify+webhook race
+    // idempotent WITHOUT downgrading a license the consumer may have already
+    // activated (don't touch status / machine_id on conflict — only backfill
+    // the assigned_email if it was null, and refresh meta).
     await prisma.$executeRaw`
-      INSERT INTO licenses (license_key, assigned_email, plan, status, meta, created_at)
-      VALUES (${input.licenseKey}, ${input.email}, 'lifetime', 'active', ${meta}, NOW())
+      INSERT INTO licenses (license_key, assigned_email, plan, status, expires_at, meta, created_at)
+      VALUES (${input.licenseKey}, ${input.email}, 'lifetime', 'unassigned', NULL, ${meta}, NOW())
       ON DUPLICATE KEY UPDATE
-        assigned_email = VALUES(assigned_email),
-        plan           = VALUES(plan),
-        status         = VALUES(status),
+        assigned_email = COALESCE(licenses.assigned_email, VALUES(assigned_email)),
         meta           = VALUES(meta)
     `;
     return { ok: true };
