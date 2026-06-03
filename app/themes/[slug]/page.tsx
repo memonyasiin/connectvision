@@ -36,6 +36,7 @@ import {
   MARKETPLACE_THEMES,
 } from '@/data/themeMarketplaceCatalog';
 import { THEME_CATEGORY_BY_ID, type ThemeCategoryMeta } from '@/themes/_categories';
+import { getThemeById } from '@/data/themeManifest';
 
 interface DetailPageProps {
   params: Promise<{ slug: string }>;
@@ -74,6 +75,12 @@ export default async function ThemeDetailPage({ params }: DetailPageProps) {
   const { slug } = await params;
   const theme = findThemeBySlug(slug);
   if (!theme) notFound();
+
+  // A live, interactive preview exists only for themes whose category has a
+  // built manifest + sample build. (Some catalog entries — e.g. retail-modern —
+  // are listed before their section pack ships.) Gate the iframe on this so we
+  // never embed a 404 preview route.
+  const hasPreview = !!getThemeById(theme.categoryId);
 
   const cat = THEME_CATEGORY_BY_ID[theme.categoryId];
   const siblings = relatedThemes(theme.categoryId, theme.slug, 3);
@@ -183,12 +190,14 @@ export default async function ThemeDetailPage({ params }: DetailPageProps) {
               >
                 Try with your details →
               </Link>
-              <Link
-                href={theme.previewPath as Route}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold text-emerald-900 bg-white border border-emerald-900/20 hover:border-emerald-900/40 transition-colors"
-              >
-                Live preview
-              </Link>
+              {hasPreview && (
+                <Link
+                  href={theme.previewPath as Route}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold text-emerald-900 bg-white border border-emerald-900/20 hover:border-emerald-900/40 transition-colors"
+                >
+                  Live preview
+                </Link>
+              )}
             </div>
             <div className="mt-4 text-xs text-slate-500">
               <span className="font-semibold">Best for:</span> {theme.bestFor}
@@ -222,23 +231,37 @@ export default async function ThemeDetailPage({ params }: DetailPageProps) {
               Walk through the template
             </h2>
           </div>
-          <Link
-            href={theme.previewPath as Route}
-            target="_blank"
-            rel="noopener"
-            className="text-sm text-emerald-700 hover:text-emerald-800 transition-colors inline-flex items-center gap-1"
-          >
-            Open full-screen →
-          </Link>
+          {hasPreview && (
+            <Link
+              href={theme.previewPath as Route}
+              target="_blank"
+              rel="noopener"
+              className="text-sm text-emerald-700 hover:text-emerald-800 transition-colors inline-flex items-center gap-1"
+            >
+              Open full-screen →
+            </Link>
+          )}
         </div>
-        <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden shadow-sm">
-          <iframe
-            src={theme.previewPath}
-            title={`${theme.name} live preview`}
-            className="w-full h-[680px] bg-white"
-            loading="lazy"
-          />
-        </div>
+        {hasPreview ? (
+          <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden shadow-sm">
+            <iframe
+              src={theme.previewPath}
+              title={`${theme.name} live preview`}
+              className="w-full h-[680px] bg-white"
+              loading="lazy"
+            />
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-6 py-16 text-center">
+            <div className="text-3xl mb-3">🎨</div>
+            <div className="font-semibold text-emerald-950 mb-1">Interactive preview coming soon</div>
+            <p className="text-sm text-slate-500 max-w-md mx-auto">
+              This theme is available to purchase and customise now — the live
+              walkthrough is being finalised. Tap “Try with your details” to see
+              it with your own brand.
+            </p>
+          </div>
+        )}
       </section>
 
       {/* ── Features list ──────────────────────────────────────────────── */}

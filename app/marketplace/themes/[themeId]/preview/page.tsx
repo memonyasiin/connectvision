@@ -9,15 +9,27 @@
 import { notFound } from 'next/navigation';
 import { getThemeById } from '@/data/themeManifest';
 import { getSampleBuildByThemeId } from '@/data/sampleBuilds';
+import { findThemeBySlug } from '@/data/themeMarketplaceCatalog';
 import { ThemePreviewStack } from './ThemePreviewStack';
 
 interface PageProps {
   params: Promise<{ themeId: string }>;
 }
 
+// The `themeId` segment may be EITHER a manifest theme id (e.g. skincare-luxe)
+// OR a marketplace slug (e.g. memon-beauty). Marketplace catalog `previewPath`s
+// are authored with slugs, while the manifest/sampleBuilds key off the category
+// id — so resolve both. Returns the canonical manifest id, or null.
+function resolveManifestId(themeId: string): string | null {
+  if (getThemeById(themeId)) return themeId;
+  const mk = findThemeBySlug(themeId);
+  return mk && getThemeById(mk.categoryId) ? mk.categoryId : null;
+}
+
 export async function generateMetadata({ params }: PageProps) {
   const { themeId } = await params;
-  const theme = getThemeById(themeId);
+  const id = resolveManifestId(themeId);
+  const theme = id ? getThemeById(id) : null;
   if (!theme) return { title: 'Theme preview' };
   return {
     title: `${theme.name} — Live preview`,
@@ -27,10 +39,11 @@ export async function generateMetadata({ params }: PageProps) {
 
 export default async function ThemePreviewPage({ params }: PageProps) {
   const { themeId } = await params;
-  const theme = getThemeById(themeId);
-  if (!theme) notFound();
+  const id = resolveManifestId(themeId);
+  const theme = id ? getThemeById(id) : null;
+  if (!id || !theme) notFound();
 
-  const sample = getSampleBuildByThemeId(themeId);
+  const sample = getSampleBuildByThemeId(id);
   if (!sample) notFound();
 
   return <ThemePreviewStack theme={theme} sample={sample} />;
