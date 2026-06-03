@@ -83,7 +83,9 @@ export default function ChatPage() {
   const voiceModeRef = useRef(false);
   const inputRef = useRef('');
   const activeIdRef = useRef<string | null>(null);
+  const messagesRef = useRef<Msg[]>([]);
 
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { inputRef.current = input; }, [input]);
   useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
   useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
@@ -174,11 +176,11 @@ export default function ChatPage() {
 
   // ── STT ────────────────────────────────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const makeRecognizer = (onFinal: (t: string) => void, onInterim?: (t: string) => void): any => {
+  const makeRecognizer = (onFinal: (t: string) => void, onInterim?: (t: string) => void, continuous = false): any => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return null;
-    const r = new SR(); r.lang = 'en-IN'; r.interimResults = true; r.continuous = false;
+    const r = new SR(); r.lang = 'en-IN'; r.interimResults = true; r.continuous = continuous;
     let finalText = '';
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     r.onresult = (e: any) => {
@@ -192,12 +194,17 @@ export default function ChatPage() {
     };
     return r;
   };
+  const micActiveRef = useRef(false);
   const toggleMic = () => {
-    if (listening) { recogRef.current?.stop(); setListening(false); return; }
+    if (listening) { micActiveRef.current = false; recogRef.current?.stop(); setListening(false); return; }
     const base = inputRef.current ? inputRef.current + ' ' : '';
-    const r = makeRecognizer((f) => setInput((base + f).trimStart()), (i) => setInput((base + i).trimStart()));
+    // continuous = true so brief pauses don't auto-stop dictation; it keeps
+    // listening until the user taps the mic again.
+    const r = makeRecognizer((f) => setInput((base + f).trimStart()), (i) => setInput((base + i).trimStart()), true);
     if (!r) { alert('Voice input is not supported here. Try Chrome.'); return; }
-    r.onend = () => setListening(false); r.onerror = () => setListening(false);
+    micActiveRef.current = true;
+    r.onend = () => { if (micActiveRef.current) { try { r.start(); } catch { setListening(false); } } else setListening(false); };
+    r.onerror = () => { micActiveRef.current = false; setListening(false); };
     recogRef.current = r; setListening(true); r.start();
   };
 
@@ -216,8 +223,15 @@ export default function ChatPage() {
     }
 
     const userMsg: Msg = { role: 'user', content: text || '(image)', image: sentImage };
-    let history: Msg[] = [];
-    setMessages((p) => { history = [...p, userMsg]; return [...history, { role: 'assistant', content: '' }]; });
+    // Build the request history from the LATEST messages (ref), not from inside
+    // a setState updater — the updater runs async, so `history` would be stale/
+    // empty when the fetch fires, which made the backend 400 and no reply ever
+    // streamed (the "stuck on … dots" bug).
+    const history: Msg[] = [
+      ...messagesRef.current.filter((m) => m.content.trim() || m.image),
+      userMsg,
+    ];
+    setMessages((p) => [...p, userMsg, { role: 'assistant', content: '' }]);
 
     let finalText = '';
     try {
