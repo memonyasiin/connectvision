@@ -87,6 +87,20 @@ export default function ChatPage() {
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { inputRef.current = input; }, [input]);
+
+  // Warm the TTS voice list — speechSynthesis.getVoices() is async and returns
+  // [] until the 'voiceschanged' event, which is why the FIRST utterance used
+  // the robotic default voice. Pre-load + cache so we always pick a good one.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const voicesRef = useRef<any[]>([]);
+  useEffect(() => {
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    const load = () => { voicesRef.current = synth.getVoices(); };
+    load();
+    synth.addEventListener?.('voiceschanged', load);
+    return () => synth.removeEventListener?.('voiceschanged', load);
+  }, []);
   useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
   useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, busy]);
@@ -163,11 +177,19 @@ export default function ChatPage() {
     const synth = window.speechSynthesis;
     if (!synth || !text.trim()) { onDone?.(); return; }
     synth.cancel();
+    const lang = ttsLang(text);
     const u = new SpeechSynthesisUtterance(text.replace(/[*`#_>]/g, ''));
-    u.lang = ttsLang(text); u.rate = 1.02;
-    const voices = synth.getVoices();
-    const v = voices.find((x) => x.lang === u.lang) || voices.find((x) => x.lang.startsWith(u.lang.slice(0, 2)));
-    if (v) u.voice = v;
+    u.lang = lang; u.rate = 1.0; u.pitch = 1.0;
+    // Pick the most natural voice: prefer Google/Natural/Neural neural voices
+    // for the language, then any matching-language voice, then nothing (default).
+    const voices = voicesRef.current.length ? voicesRef.current : synth.getVoices();
+    const two = lang.slice(0, 2);
+    const byLang = voices.filter((v) => v.lang === lang || v.lang.replace('_', '-').startsWith(two));
+    const best =
+      byLang.find((v) => /google|natural|neural|wavenet/i.test(v.name)) ||
+      byLang.find((v) => v.localService === false) ||
+      byLang[0];
+    if (best) u.voice = best;
     u.onstart = () => setSpeakingIdx(idx);
     u.onend = () => { setSpeakingIdx(null); onDone?.(); };
     u.onerror = () => { setSpeakingIdx(null); onDone?.(); };
