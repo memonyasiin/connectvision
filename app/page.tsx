@@ -60,9 +60,9 @@ export default function LandingPage() {
       <SiteHeader />
       <HeroSection />
       <ServicesSection />
+      <AISpotlight />
       <ThemeShowcaseStrip />
       <WhyBand />
-      <HowItWorks />
       <PricingReassurance />
       <FinalCta />
       <SiteFooter />
@@ -192,12 +192,12 @@ const SERVICES: ServiceCard[] = [
 
 function ServicesSection() {
   return (
-    <section className="bg-white border-b border-stone-200">
-      <div className="max-w-6xl mx-auto px-5 md:px-8 py-14 md:py-20">
-        <div className="text-center mb-10">
+    <section id="services" className="bg-white border-b border-stone-200 scroll-mt-20">
+      <div className="max-w-6xl mx-auto px-5 md:px-8 py-16 md:py-24">
+        <div className="text-center mb-12">
           <div className="text-[10px] font-mono uppercase tracking-[0.22em] text-emerald-700 mb-2">Everything we offer</div>
-          <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-emerald-950">One platform, four services</h2>
-          <p className="text-slate-500 mt-3 max-w-xl mx-auto">AI, websites, a mobile app, and a licensing backend — all under ConnectVision.</p>
+          <h2 className="text-3xl md:text-5xl font-bold tracking-tight text-emerald-950">One platform. Four services.</h2>
+          <p className="text-slate-500 mt-4 max-w-xl mx-auto text-base">AI, websites, a mobile app, and a licensing backend — all under ConnectVision.</p>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {SERVICES.map((s) => {
@@ -230,60 +230,47 @@ function ServicesSection() {
 
 function HeroSection() {
   return (
-    <section className="relative overflow-hidden bg-gradient-to-br from-emerald-900 via-emerald-800 to-emerald-950 text-white">
+    <section className="relative overflow-hidden bg-gradient-to-br from-emerald-950 via-emerald-900 to-[#0a2417] text-white">
       {/* Gold radial accent */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-35"
-        style={{
-          background:
-            'radial-gradient(ellipse 70% 50% at 85% 20%, rgba(212,175,55,0.45) 0%, transparent 60%)',
-        }}
-      />
-      {/* Mesh accent — bottom-left */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-25"
-        style={{
-          background:
-            'radial-gradient(ellipse 50% 50% at 10% 100%, rgba(110,231,183,0.55) 0%, transparent 60%)',
-        }}
-      />
+      <div aria-hidden className="pointer-events-none absolute inset-0 opacity-40"
+        style={{ background: 'radial-gradient(ellipse 60% 50% at 82% 15%, rgba(212,175,55,0.5) 0%, transparent 60%)' }} />
+      {/* Emerald mesh — bottom-left */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 opacity-30"
+        style={{ background: 'radial-gradient(ellipse 50% 50% at 8% 105%, rgba(110,231,183,0.55) 0%, transparent 60%)' }} />
+      {/* Subtle grid texture */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.06]"
+        style={{ backgroundImage: 'linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)', backgroundSize: '44px 44px' }} />
+
       <div className="relative max-w-6xl mx-auto px-5 md:px-8 py-20 md:py-28">
         <div className="max-w-3xl">
           <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-300 bg-white/10 border border-white/15 px-3 py-1 rounded-full mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-300 animate-pulse" />
-            India\'s zero-friction website marketplace
+            AI · Websites · Mobile · Licensing
           </div>
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.02]">
-            Apna business website{' '}
-            <span className="text-amber-300">5 minute</span> mein
+          <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.03]">
+            India ka all-in-one{' '}
+            <span className="bg-gradient-to-r from-amber-300 via-amber-200 to-emerald-200 bg-clip-text text-transparent">AI business platform</span>
           </h1>
-          <p className="mt-6 text-base md:text-lg lg:text-xl text-emerald-100 max-w-2xl leading-relaxed">
-            Premium WordPress-grade themes, designed for India\'s SMBs. Pick
-            a template, fill in your business details, pay once — walk out
-            with a production-ready website and a lifetime licence. No
-            coding. No subscription. No surprises.
+          <p className="mt-6 text-base md:text-lg lg:text-xl text-emerald-100/90 max-w-2xl leading-relaxed">
+            Ek hi jagah — ek sovereign AI assistant, premium website themes,
+            a mobile app, aur a full licensing backend. Built for India&apos;s
+            shopkeepers, founders &amp; developers. No code, no subscription.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-3">
-            <Link
-              href={'/themes' as Route}
-              className="inline-flex items-center gap-2 px-7 py-4 rounded-xl text-base font-semibold text-emerald-950 bg-amber-300 hover:bg-amber-200 transition-colors shadow-lg shadow-amber-300/20"
-            >
-              Browse themes →
+            <Link href={'/chat' as Route}
+              className="inline-flex items-center gap-2 px-7 py-4 rounded-xl text-base font-semibold text-emerald-950 bg-amber-300 hover:bg-amber-200 transition-colors shadow-lg shadow-amber-300/25">
+              🤖 Try ConnectVision AI
             </Link>
-            <a
-              href="#how-it-works"
-              className="inline-flex items-center gap-2 px-7 py-4 rounded-xl text-base font-semibold text-white bg-white/10 border border-white/15 hover:bg-white/15 transition-colors"
-            >
-              How it works
+            <a href="#services"
+              className="inline-flex items-center gap-2 px-7 py-4 rounded-xl text-base font-semibold text-white bg-white/10 border border-white/15 hover:bg-white/15 transition-colors">
+              Explore all services
             </a>
           </div>
-          <div className="mt-8 flex flex-wrap gap-4 text-xs text-emerald-200">
-            <ValueDot label="One-time pricing · no subscription" />
-            <ValueDot label="GST-compliant invoicing" />
-            <ValueDot label="Razorpay UPI / card / netbanking" />
-            <ValueDot label="Same-day delivery" />
+          <div className="mt-10 flex flex-wrap gap-x-8 gap-y-3">
+            <Stat n="4" label="integrated services" />
+            <Stat n="5" label="flagship themes" />
+            <Stat n="3" label="languages (EN/HI/Hinglish)" />
+            <Stat n="₹0" label="to start · free AI" />
           </div>
         </div>
       </div>
@@ -291,12 +278,84 @@ function HeroSection() {
   );
 }
 
-function ValueDot({ label }: { label: string }) {
+function Stat({ n, label }: { n: string; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="w-1 h-1 rounded-full bg-amber-300" />
-      {label}
-    </span>
+    <div>
+      <div className="text-3xl font-bold text-amber-300 tabular-nums leading-none">{n}</div>
+      <div className="text-[11px] text-emerald-200/80 mt-1 uppercase tracking-wide">{label}</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI Spotlight — flagship AI assistant feature band
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AISpotlight() {
+  return (
+    <section className="bg-gradient-to-br from-emerald-950 via-emerald-900 to-[#0a2417] text-white overflow-hidden">
+      <div className="max-w-6xl mx-auto px-5 md:px-8 py-16 md:py-24 grid lg:grid-cols-2 gap-12 items-center">
+        {/* Copy */}
+        <div>
+          <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-300 bg-white/10 border border-white/15 px-3 py-1 rounded-full mb-5">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-300 animate-pulse" /> Flagship · Free
+          </div>
+          <h2 className="text-3xl md:text-5xl font-bold tracking-tight leading-tight">
+            ChatGPT-level AI,{' '}
+            <span className="text-amber-300">India ke liye</span>
+          </h2>
+          <p className="mt-5 text-emerald-100/90 text-base md:text-lg leading-relaxed max-w-lg">
+            GSTIN, UPI, NPCI samajhne wala assistant. Type karo, bolo 🎤, ya
+            image upload 🖼️ karo — real-time streamed jawab, English / Hindi /
+            Hinglish mein.
+          </p>
+          <ul className="mt-7 space-y-2.5">
+            {[
+              ['⚡', 'Real-time streaming answers'],
+              ['🎤', 'Voice input (bol ke poochho)'],
+              ['🖼️', 'Image upload + understanding'],
+              ['🇮🇳', 'Indian commerce context built-in'],
+            ].map(([e, t]) => (
+              <li key={t} className="flex items-center gap-3 text-emerald-50">
+                <span className="text-lg">{e}</span><span className="text-sm md:text-base">{t}</span>
+              </li>
+            ))}
+          </ul>
+          <Link href={'/chat' as Route}
+            className="mt-8 inline-flex items-center gap-2 px-7 py-4 rounded-xl text-base font-semibold text-emerald-950 bg-amber-300 hover:bg-amber-200 transition-colors shadow-lg shadow-amber-300/25">
+            Open AI chat — free →
+          </Link>
+        </div>
+
+        {/* Chat mockup */}
+        <div className="relative">
+          <div className="absolute -inset-4 bg-amber-300/10 blur-3xl rounded-full" aria-hidden />
+          <div className="relative bg-zinc-900/80 backdrop-blur border border-white/10 rounded-3xl p-5 shadow-2xl">
+            <div className="flex items-center gap-2 pb-3 border-b border-white/10">
+              <span className="h-6 w-6 rounded-lg grid place-items-center text-[11px] font-black text-black" style={{ background: 'linear-gradient(135deg,#D4AF37,#f4e4a6)' }}>CV</span>
+              <span className="text-sm font-semibold">ConnectVision AI</span>
+              <span className="ml-auto h-2 w-2 rounded-full bg-emerald-400" />
+            </div>
+            <div className="space-y-3 pt-4 text-sm">
+              <div className="flex justify-end">
+                <div className="bg-white/10 rounded-2xl rounded-br-sm px-4 py-2.5 max-w-[80%]">GSTIN kaise apply karun?</div>
+              </div>
+              <div className="flex gap-2">
+                <span className="h-7 w-7 shrink-0 rounded-lg grid place-items-center text-sm" style={{ background: 'linear-gradient(135deg,#1c4d2a,#16a34a)' }}>🤖</span>
+                <div className="bg-white/5 border border-white/10 rounded-2xl rounded-bl-sm px-4 py-2.5 max-w-[85%] text-emerald-50 leading-relaxed">
+                  GST portal (gst.gov.in) pe jaake <strong>&apos;New Registration&apos;</strong> choose karo, PAN + business details bharo, OTP verify karo, aur documents upload karo. 7 working days mein GSTIN mil jaata hai…
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-2 py-1.5">
+              <span className="text-base">🖼️</span><span className="text-base">🎤</span>
+              <span className="flex-1 text-zinc-500 text-sm px-1">Kuch bhi poochho…</span>
+              <span className="h-7 w-7 grid place-items-center rounded-lg text-black text-xs" style={{ background: 'linear-gradient(135deg,#D4AF37,#f4e4a6)' }}>➤</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -435,66 +494,6 @@ function ValueCard({ title, glyph, detail }: { title: string; glyph: string; det
       </h3>
       <p className="text-sm text-slate-600 leading-relaxed">{detail}</p>
     </article>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// How it works — 4-step timeline
-// ─────────────────────────────────────────────────────────────────────────────
-
-function HowItWorks() {
-  const steps = [
-    {
-      n: '01',
-      title: 'Browse the catalog',
-      detail: 'Five flagship themes across skincare, fitness, hospitality, medical, and retail. Filter by industry, preview live in your browser.',
-    },
-    {
-      n: '02',
-      title: 'Customise in 4 steps',
-      detail: 'Business name, brand colour, services, contact. The live preview on the right updates instantly as you type — no guesswork.',
-    },
-    {
-      n: '03',
-      title: 'Pay via Razorpay',
-      detail: 'UPI, card, or net-banking. ₹999 to ₹3,499 lifetime. GST invoice arrives in your inbox the moment payment captures.',
-    },
-    {
-      n: '04',
-      title: 'Walk out with everything',
-      detail: 'Personalised theme bundle + lifetime licence key + access to your dashboard. Re-customise as many times as you like.',
-    },
-  ];
-  return (
-    <section
-      id="how-it-works"
-      className="max-w-6xl mx-auto px-5 md:px-8 py-16 md:py-24"
-    >
-      <div className="text-center mb-12">
-        <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1.5">
-          How it works
-        </div>
-        <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-emerald-950">
-          Four steps. Five minutes.
-        </h2>
-      </div>
-      <ol className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        {steps.map((s) => (
-          <li
-            key={s.n}
-            className="rounded-2xl border border-stone-200 bg-white p-6 relative"
-          >
-            <div className="text-3xl font-bold text-amber-400 mb-3 tabular-nums">
-              {s.n}
-            </div>
-            <h3 className="text-base font-bold text-emerald-950 mb-2">
-              {s.title}
-            </h3>
-            <p className="text-xs text-slate-600 leading-relaxed">{s.detail}</p>
-          </li>
-        ))}
-      </ol>
-    </section>
   );
 }
 
