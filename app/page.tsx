@@ -99,6 +99,9 @@ function SiteHeader() {
           <Link href={'/dashboard' as Route} className="hover:text-emerald-700 transition-colors">
             My purchases
           </Link>
+          <Link href={'/app' as Route} className="hover:text-emerald-700 transition-colors">
+            Mobile app
+          </Link>
         </nav>
         <Link
           href={'/themes' as Route}
