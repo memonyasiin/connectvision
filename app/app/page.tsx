@@ -16,10 +16,10 @@ import Link from 'next/link';
 
 export const dynamic = 'force-static';
 
-const APK_VERSION = '0.1.2';
-const APK_SIZE = '47 MB';
+const APK_VERSION = '0.2.0';
+const APK_SIZE = '48 MB';
 const APK_MIN_ANDROID = 'Android 8.0+';
-const APK_URL = 'https://license.connectvision.us/download/connectvision-mobile-v0.1.2.apk';
+const APK_URL = 'https://license.connectvision.us/download/connectvision-mobile-v0.2.0.apk';
 
 export const metadata: Metadata = {
   title: 'ConnectVision App — Sovereign AI Search for Indian Merchants',
