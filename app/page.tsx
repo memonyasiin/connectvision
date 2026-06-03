@@ -102,6 +102,9 @@ function SiteHeader() {
           <Link href={'/app' as Route} className="hover:text-emerald-700 transition-colors">
             Mobile app
           </Link>
+          <Link href={'/chat' as Route} className="text-emerald-700 font-semibold hover:text-emerald-900 transition-colors">
+            AI Chat
+          </Link>
           <Link href={'/about' as Route} className="hover:text-emerald-700 transition-colors">
             About
           </Link>
