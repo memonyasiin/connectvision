@@ -59,6 +59,7 @@ export default function LandingPage() {
     <main className="min-h-screen bg-stone-50 text-slate-900">
       <SiteHeader />
       <HeroSection />
+      <ServicesSection />
       <ThemeShowcaseStrip />
       <WhyBand />
       <HowItWorks />
@@ -125,7 +126,101 @@ function SiteHeader() {
           Browse themes →
         </Link>
       </div>
+      {/* Mobile nav — horizontal scroll pills (desktop uses the inline nav above) */}
+      <div className="md:hidden border-t border-stone-200 overflow-x-auto">
+        <nav className="flex items-center gap-2 px-4 py-2 text-sm whitespace-nowrap">
+          <Link href={'/chat' as Route} className="px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200">🤖 AI Chat</Link>
+          <Link href={'/themes' as Route} className="px-3 py-1.5 rounded-full bg-stone-100 text-slate-700">Themes</Link>
+          <Link href={'/app' as Route} className="px-3 py-1.5 rounded-full bg-stone-100 text-slate-700">Mobile app</Link>
+          <Link href={'/about' as Route} className="px-3 py-1.5 rounded-full bg-stone-100 text-slate-700">About</Link>
+          <Link href={'/contact' as Route} className="px-3 py-1.5 rounded-full bg-stone-100 text-slate-700">Contact</Link>
+        </nav>
+      </div>
     </header>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Services — every ConnectVision product/service in one band (MODULE 20)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ServiceCard {
+  emoji: string;
+  title: string;
+  desc: string;
+  href: string;
+  cta: string;
+  external?: boolean;
+  accent: string;
+}
+
+const SERVICES: ServiceCard[] = [
+  {
+    emoji: '🤖',
+    title: 'ConnectVision AI',
+    desc: 'A ChatGPT-style assistant for Indian merchants — streaming answers, voice input, and image understanding. Free to use.',
+    href: '/chat',
+    cta: 'Open AI chat',
+    accent: '#16a34a',
+  },
+  {
+    emoji: '🛍️',
+    title: 'Theme Marketplace',
+    desc: 'Premium website themes across 5 verticals. Customise in minutes, pay once, get a lifetime licence + GST invoice.',
+    href: '/themes',
+    cta: 'Browse themes',
+    accent: '#1c4d2a',
+  },
+  {
+    emoji: '📱',
+    title: 'Mobile App',
+    desc: 'The ConnectVision Android app — sovereign AI search in your pocket. English, Hindi & Hinglish.',
+    href: '/app',
+    cta: 'Download app',
+    accent: '#b8901f',
+  },
+  {
+    emoji: '🔐',
+    title: 'Licensing Portal',
+    desc: 'Issue, verify & manage software licences. Admin panel + REST API for resellers and distributed apps.',
+    href: 'https://license.connectvision.us',
+    cta: 'Open portal',
+    external: true,
+    accent: '#0f766e',
+  },
+];
+
+function ServicesSection() {
+  return (
+    <section className="bg-white border-b border-stone-200">
+      <div className="max-w-6xl mx-auto px-5 md:px-8 py-14 md:py-20">
+        <div className="text-center mb-10">
+          <div className="text-[10px] font-mono uppercase tracking-[0.22em] text-emerald-700 mb-2">Everything we offer</div>
+          <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-emerald-950">One platform, four services</h2>
+          <p className="text-slate-500 mt-3 max-w-xl mx-auto">AI, websites, a mobile app, and a licensing backend — all under ConnectVision.</p>
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {SERVICES.map((s) => {
+            const inner = (
+              <div className="h-full bg-stone-50 border border-stone-200 rounded-2xl p-6 hover:shadow-lg hover:border-emerald-200 transition flex flex-col">
+                <div className="h-12 w-12 rounded-xl grid place-items-center text-2xl mb-4"
+                  style={{ background: `${s.accent}1a` }}>{s.emoji}</div>
+                <h3 className="font-bold text-emerald-950 mb-1.5">{s.title}</h3>
+                <p className="text-sm text-slate-600 leading-relaxed flex-1">{s.desc}</p>
+                <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold" style={{ color: s.accent }}>
+                  {s.cta} →
+                </span>
+              </div>
+            );
+            return s.external ? (
+              <a key={s.title} href={s.href} target="_blank" rel="noopener noreferrer">{inner}</a>
+            ) : (
+              <Link key={s.title} href={s.href as Route}>{inner}</Link>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
 
