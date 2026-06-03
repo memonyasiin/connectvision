@@ -262,12 +262,16 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
-  // ── Fire-and-forget: mirror the license into the PHP license server ──────
+  // ── Mirror the license into the PHP license server ──────────────────────
   // Registers the issued key in the shared `licenses` table so
   // license.connectvision.us recognises it. Idempotent vs the webhook path.
+  // AWAITED (not fire-and-forget): on Vercel the serverless function can be
+  // frozen the instant the response is returned, so a `void`ed write may
+  // never run. This is a single-row INSERT on the same pool — cheap enough
+  // to await, and it never throws (returns {ok:false} on fault).
   {
     const theme = findThemeBySlug(draft.themeSlug);
-    void registerLicenseInServer({
+    const reg = await registerLicenseInServer({
       licenseKey,
       email: draft.contactEmail ?? draft.customerEmail ?? null,
       themeSlug: draft.themeSlug,
@@ -275,6 +279,10 @@ export async function POST(req: Request): Promise<NextResponse> {
       draftId: draft.id,
       businessName: draft.businessName,
     });
+    if (!reg.ok) {
+      // eslint-disable-next-line no-console
+      console.error(`[checkout/verify] license-server register failed for ${draft.id}: ${reg.error}`);
+    }
   }
 
   // ── Fire-and-forget purchase confirmation email ─────────────────────────

@@ -274,11 +274,13 @@ export async function POST(req: Request): Promise<NextResponse> {
           },
         });
 
-        // Fire-and-forget: mirror the license into the PHP license server
-        // (shared `licenses` table). Idempotent vs the /verify path.
+        // Mirror the license into the PHP license server (shared `licenses`
+        // table). Idempotent vs the /verify path. AWAITED — a Vercel function
+        // can freeze the instant it returns, so a fire-and-forget write may
+        // never run. Single-row INSERT; never throws.
         {
           const theme = findThemeBySlug(draft.themeSlug);
-          void registerLicenseInServer({
+          const reg = await registerLicenseInServer({
             licenseKey,
             email: draft.contactEmail ?? draft.customerEmail ?? null,
             themeSlug: draft.themeSlug,
@@ -286,6 +288,10 @@ export async function POST(req: Request): Promise<NextResponse> {
             draftId: draft.id,
             businessName: draft.businessName,
           });
+          if (!reg.ok) {
+            // eslint-disable-next-line no-console
+            console.error(`[checkout/webhook] license-server register failed for ${draft.id}: ${reg.error}`);
+          }
         }
 
         // Fire-and-forget purchase email. Atomic guard inside ensures
