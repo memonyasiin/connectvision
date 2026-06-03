@@ -388,11 +388,21 @@ export default function ChatPage() {
       if (silence) clearTimeout(silence);
       if (finalText.trim() || interim.trim()) silence = setTimeout(doSubmit, 1800);
     };
-    r.onerror = () => { /* no-speech/aborted — onend handles restart */ };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    r.onerror = (e: any) => {
+      if (e?.error === 'not-allowed' || e?.error === 'service-not-allowed') {
+        alert('Microphone permission chahiye voice mode ke liye. Mic access allow karo.');
+        exitVoiceMode();
+      }
+      // no-speech / network / aborted → onend restarts the mic
+    };
     r.onend = () => {
       if (submitted) return;
-      if (finalText.trim()) doSubmit();
-      else if (voiceModeRef.current) { try { r.start(); } catch { setTimeout(voiceListenOnce, 300); } }
+      if (finalText.trim()) { doSubmit(); return; }
+      // The browser's speech API auto-stops after a few seconds of silence — this
+      // was the "mic band ho jaata hai" bug. Restart with a FRESH recognizer so
+      // the mic stays live until the user actually speaks (or ends voice mode).
+      if (voiceModeRef.current) setTimeout(() => voiceListenOnce(), 250);
     };
     recogRef.current = r;
     try { r.start(); } catch { setTimeout(voiceListenOnce, 400); }
